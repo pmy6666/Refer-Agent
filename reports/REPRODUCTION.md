@@ -61,3 +61,5 @@ python tools/check_progress.py
 首条全量定位已完成25次模型调用，4次反馈修正耗尽后存在性仍失败，结果保留待SAM2/评测，见first_grounding_validation.json。这不是全量成绩。QA中22/458为空，将记录未检查；新CLIP文件与历史文件SHA256相同，pip freeze也逐字相同，见input_equivalence.json。
 
 事后诊断另统计正点是否位于其框内、是否命中关键帧GT，以便检查SAM2的联合提示；这不改变本次推理或使用GT修正预测。
+
+补充24个Ovis非LFS支持文件与CLIP本地文件校验（配置、模型代码、tokenizer和CLIP权重），无不匹配；下载清单的预期值也逐项对照固定revision的Hugging Face远程元数据，全部一致。此前Ovis四分片和SAM2 checkpoint的SHA256已通过。仍不能据此推断作者未公开的精确SAM2版本或内部revision。
