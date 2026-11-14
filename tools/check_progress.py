@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -75,6 +76,25 @@ def slurm_status(run, submission, logs):
                                         capture_output=True, text=True, timeout=5, check=True).stdout
                 matched = any(value.startswith(str(run) + '/') for value in
                               re.findall(r'(?:StdOut|StdErr|WorkDir)=(\S+)', detail))
+                if not matched:
+                    # Continuations use the shared repository log directory and
+                    # get new job IDs. Match their explicit run argument too.
+                    command = re.search(r'\bCommand=(.*?)\s+WorkDir=', detail)
+                    working = re.search(r'\bWorkDir=(\S+)', detail)
+                    if command and working:
+                        argv = shlex.split(command.group(1))
+                        for index, argument in enumerate(argv):
+                            value = None
+                            if argument == '--run_dir' and index + 1 < len(argv):
+                                value = argv[index + 1]
+                            elif argument.startswith('--run_dir='):
+                                value = argument.split('=', 1)[1]
+                            if value is not None:
+                                directory = Path(value)
+                                if not directory.is_absolute():
+                                    directory = Path(working.group(1)) / directory
+                                matched = directory.resolve() == run.resolve()
+                                break
             except (OSError, subprocess.SubprocessError):
                 pass
         if matched:
