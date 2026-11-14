@@ -59,3 +59,5 @@ python tools/check_progress.py
 进度查询工具补充按Slurm实际Command中的--run_dir识别续跑作业，避免共享日志目录与新job ID导致漏报。已在不提供作业ID/日志提示的条件下，从Slurm实时状态识别到作业856。
 
 首条全量定位已完成25次模型调用，4次反馈修正耗尽后存在性仍失败，结果保留待SAM2/评测，见first_grounding_validation.json。这不是全量成绩。QA中22/458为空，将记录未检查；新CLIP文件与历史文件SHA256相同，pip freeze也逐字相同，见input_equivalence.json。
+
+事后诊断另统计正点是否位于其框内、是否命中关键帧GT，以便检查SAM2的联合提示；这不改变本次推理或使用GT修正预测。

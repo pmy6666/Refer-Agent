@@ -21,9 +21,14 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def anchor_diagnostic(mask_path, boxes, cache):
+def anchor_diagnostic(mask_path, boxes, points, cache):
+    if len(boxes) != len(points):
+        raise ValueError('Diagnostic input has different box/point counts')
+    geometry = {'points_outside_their_boxes': sum(
+        not (x1 <= x < x2 and y1 <= y < y2)
+        for (x1, y1, x2, y2), (x, y) in zip(boxes, points))}
     if not mask_path.exists():
-        return {'anchor_gt': 'not_annotated'}
+        return {'anchor_gt': 'not_annotated', **geometry}
     if mask_path not in cache:
         with Image.open(mask_path) as image:
             cache[mask_path] = np.asarray(image.convert('L')) > 0
@@ -39,9 +44,13 @@ def anchor_diagnostic(mask_path, boxes, cache):
             covered[top:bottom, left:right] = True
     intersection = int((mask & covered).sum())
     return {'anchor_gt': 'visible' if pixels else 'absent',
+            **geometry,
             'anchor_gt_pixels': pixels,
             'anchor_box_gt_intersection_pixels': intersection,
-            'anchor_box_gt_recall': intersection / pixels if pixels else None}
+            'anchor_box_gt_recall': intersection / pixels if pixels else None,
+            'anchor_point_gt_hits': sum(
+                0 <= int(x) < width and 0 <= int(y) < height and bool(mask[int(y), int(x)])
+                for x, y in points)}
 
 
 def analyze(run):
@@ -90,7 +99,7 @@ def analyze(run):
             mask_directory = (root / 'Annotations' /
                               f"{info['source']}_{video}_{expression['obj_id']}")
             row.update(anchor_diagnostic(mask_directory / (row['key_frame'] + '.png'),
-                                         result['all_boxes'], mask_cache))
+                                         result['all_boxes'], result['all_points'], mask_cache))
             trajectory = []
             for event in trace['rounds']:
                 if 'key_frame_idx' not in event:
@@ -98,11 +107,11 @@ def analyze(run):
                 frame = frames[event['key_frame_idx']]
                 trajectory.append({
                     'revision': event['revision'], 'action': event['action'],
-                    'key_frame': frame, 'boxes': event['boxes'],
+                    'key_frame': frame, 'boxes': event['boxes'], 'points': event['points'],
                     'existence': event['existence']['status'],
                     'consistency': event['consistency']['status'],
                     **anchor_diagnostic(mask_directory / (frame + '.png'),
-                                        event['boxes'], mask_cache),
+                                        event['boxes'], event['points'], mask_cache),
                 })
             if trajectory and (trajectory[-1]['boxes'] != result['all_boxes'] or
                                trajectory[-1]['key_frame'] != row['key_frame']):
@@ -139,6 +148,10 @@ def analyze(run):
             'anchor_gt_unannotated': sum(r['anchor_gt'] == 'not_annotated' for r in rows),
             'visible_gt_but_box_no_overlap': sum(
                 r['anchor_box_gt_intersection_pixels'] == 0 for r in visible),
+            'visible_gt_but_no_positive_point_hit': sum(
+                r['anchor_point_gt_hits'] == 0 for r in visible),
+            'expressions_with_point_outside_its_box': sum(
+                r['points_outside_their_boxes'] > 0 for r in rows),
             'whole_video_JF_below_10': sum(r['J&F'] < 10 for r in rows),
             'empty_qa': sum(r['empty_qa'] for r in rows),
             'model_calls': sum(r['model_calls'] for r in rows),
