@@ -1,0 +1,9 @@
+{
+  "videos": 91,
+  "expressions": 458,
+  "metadata_rgb_files": 9513,
+  "unique_gt_files": 10303,
+  "missing_or_empty_rgb": [],
+  "empty_gt_files": [],
+  "original_meta_sha256": "5c2e3e6af6601b4e48ef33116d354a2f121a832715b91f0bbf42ce47d8bd2f1f"
+}

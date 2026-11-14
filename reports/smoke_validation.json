@@ -1,0 +1,57 @@
+{
+  "source_matches_launch_manifest": {
+    "eval/Ovis_infer_reasonvos.py": true,
+    "utils/preprocess_reasonvos.py": true,
+    "utils/Ovis_preprocess_query_reasonvos.py": true,
+    "eval/post_processing.py": true,
+    "eval/eval_reasonvos.py": true,
+    "utils/concat_frames_reasonvos.py": true,
+    "utils/reasonvos_runtime.py": true,
+    "utils/reorder_reasonvos_meta.py": true,
+    "utils/reasonvos_pipeline.py": true,
+    "utils/reasonvos_reflection.py": true,
+    "tools/run_reasonvos.py": true
+  },
+  "smoke_summary": {
+    "expressions": 1,
+    "evaluation_policy": "complete_coverage",
+    "J": 89.94343521358736,
+    "F": 88.14452981204897,
+    "J&F": 89.04398251281816
+  },
+  "smoke_coverage": {
+    "expected_expressions": 1,
+    "expected_masks": 8,
+    "missing_masks": []
+  },
+  "model_calls": 16,
+  "rounds": [
+    {
+      "revision": 0,
+      "action": "select",
+      "key_frame_idx": 6,
+      "existence": "failed",
+      "consistency": "skipped"
+    },
+    {
+      "revision": 1,
+      "action": "select",
+      "key_frame_idx": 2,
+      "existence": "failed",
+      "consistency": "skipped"
+    },
+    {
+      "revision": 2,
+      "action": "select",
+      "key_frame_idx": 4,
+      "existence": "passed",
+      "consistency": "passed"
+    }
+  ],
+  "interpretation": "Single-expression end-to-end validation only. Not the full-dataset score.",
+  "full_dataset_target": {
+    "J&F": 69.8,
+    "J": 67.0,
+    "F": 72.7
+  }
+}

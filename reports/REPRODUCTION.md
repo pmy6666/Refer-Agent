@@ -36,3 +36,22 @@ python tools/check_progress.py
 先单样本完整QA/选帧/反思/定位/SAM2/评测，再全量458表达式。每作业6小时，时限前保存断点并自动续投；真实错误停止，不能无条件重试掩盖失败。所有运行产物位于runs/reasonvos_paper4_20261114，运行前源码/输入身份固定，更改后必须新目录。
 
 完成标准：coverage缺帧0、summary标记complete_coverage、458条均纳入；报告原始未舍入指标与论文差距。既有历史66.86为不完整掩码诊断结果，不能作为新实现成绩。
+
+## 2026-11-14 执行进展与 QA 复用
+
+- 执行 checkout 固定在 adc8221，避免修改 HEAD 破坏断点身份。该补充审计分支只新增独立诊断/迁移工具和证据，不改变运行中的推理代码。
+- 作业855完成单样本真实推理：16次模型调用、两次反馈重选、第三个状态通过两阶段检查，8张掩码完整，J=89.9434、F=88.1445、J&F=89.0440。仅为单样本验证。
+- 全量CLIP已完成458/458，所有必需帧均有有限[1,10]分数，见clip_coverage.json。
+- 原工作区已有同一生成器的458条完整QA。逐条检查查询文本、元数据、QA模式、权重清单、解码配置、worker数/种子/重试次数及checkpoint/回复轨迹/RNG校验值。两个依赖文件的差异仅为运行目录默认值、QA不调用的反思函数默认预算6→4。
+- 本次独立生成的前6条QA及其trace/RNG与历史缓存逐字节相同。随后有意停止855，保留新生成的query_qa_fresh_before_import，使用tools/import_reasonvos_qa.py审计后复用全部QA。qa_cache_import.json明确保留历史身份与新身份，未将历史QA伪称为全部重新生成；没有导入旧CLIP、grounding或mask。
+- 作业856已通过所有QA断点校验并进入新的全量grounding/反思。最终全量指标尚未产生。运行目录为runs/reasonvos_paper4_verified_20261114，默认runs/reasonvos_paper4_20261114是其符号链接。
+- J/F核心函数与ReasonVOS作者VideoLISA官方实现的AST相同，见official_metric_audit.json。19,816个相关图像文件格式/数据流检查无错误，不等于GT语义正确性认证。
+
+全量结束后运行以下只读诊断；GT像素仅在此阶段使用，不反馈给推理：
+
+```bash
+/home/user1/miniconda3/envs/refer-agent/bin/python tools/analyze_reasonvos.py \
+  runs/reasonvos_paper4_verified_20261114 --output runs/final_post_inference_audit
+```
+
+脚本按来源/QA/反思状态汇总，检查最终状态与trace一致，报告逐轮关键帧目标可见性及框交集。组间差异只是相关性，不能充当单项修复的因果消融。

@@ -1,0 +1,8 @@
+{
+  "expressions": 458,
+  "videos": 91,
+  "errors": [],
+  "sha256": "b4179a8da8f27b113d33c9b409d6d884156b5b940facc932676d740d3fa9f4ea",
+  "score_range": "finite [1,10]",
+  "required_frame_coverage": "all metadata frames checked per expression"
+}
