@@ -1,0 +1,9 @@
+{
+  "scope": "input_equivalence_only_not_accuracy",
+  "clip_values_equal": true,
+  "fresh_clip_sha256": "b4179a8da8f27b113d33c9b409d6d884156b5b940facc932676d740d3fa9f4ea",
+  "historical_clip_sha256": "b4179a8da8f27b113d33c9b409d6d884156b5b940facc932676d740d3fa9f4ea",
+  "pip_freeze_equal": true,
+  "qa_import_source": "/home/user1/NKU/Refer-Agent/runs/reasonvos_reflection6_20261112",
+  "note": "CLIP was recomputed in the new run; QA cache reused only after explicit audit. Grounding and masks are new."
+}

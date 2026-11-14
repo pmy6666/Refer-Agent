@@ -1,0 +1,56 @@
+{
+  "scope": "single_completed_grounding_only_no_segmentation_metrics",
+  "video": "6725b340-0cf9-326e-a243-631ffc768df2",
+  "expression": "0",
+  "reflection": {
+    "revisions": 4,
+    "max_reflections": 4,
+    "existence": "failed",
+    "consistency": "skipped",
+    "verified": false,
+    "status": "budget_exhausted"
+  },
+  "model_calls": 25,
+  "artifact_checks": {
+    "trace": true,
+    "rng": true
+  },
+  "rounds": [
+    {
+      "revision": 0,
+      "action": "select",
+      "key_frame_idx": 85,
+      "existence": "failed",
+      "consistency": "skipped"
+    },
+    {
+      "revision": 1,
+      "action": "select",
+      "key_frame_idx": 60,
+      "existence": "failed",
+      "consistency": "skipped"
+    },
+    {
+      "revision": 2,
+      "action": "select",
+      "key_frame_idx": 61,
+      "existence": "failed",
+      "consistency": "skipped"
+    },
+    {
+      "revision": 3,
+      "action": "select",
+      "key_frame_idx": 90,
+      "existence": "failed",
+      "consistency": "skipped"
+    },
+    {
+      "revision": 4,
+      "action": "select",
+      "key_frame_idx": 42,
+      "existence": "failed",
+      "consistency": "skipped"
+    }
+  ],
+  "note": "Budget exhaustion is retained as a prediction and must remain in the final 458-expression evaluation."
+}
