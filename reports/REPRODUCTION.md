@@ -1,0 +1,38 @@
+# ReasonVOS 独立复现记录
+
+2026-11-14，起点为 fork main `083e3bd830b2144ee519b63f3aa5766d5a926b61`。
+
+论文目标：J&F=69.8，J=67.0，F=72.7。实际全量成绩尚待运行，不能保证通过修复达到目标。
+
+## 来源与已验证差异
+
+- 论文：https://arxiv.org/html/2602.03595v2 ，§3、§4.1、表1。
+- 作者未答复的复现 issue：https://github.com/iSEE-Laboratory/Refer-Agent/issues/2 （本次只读取，未发消息）。
+- 复用现有工作区的推理修复，导入前文件哈希见 import_provenance.json；旧工作区、历史结果、数据均不改动。
+- 公开 ReasonVOS 缺失 simple_concat_frames；最终融合写成 0×CLIP+0.7×Ovis；QA生产 qa_complete、读取 static；元数据脚本调用 os.copy 并丢失 videos 包装；评测跳过缺预测表达。已修复。
+- 顺序的两个两轮循环改为同一状态存在性/一致性复查，存在性失败重选帧，一致性失败重做描述。空答案、少答不视为通过，空QA明确标记未检查。多目标阈值改为超过30%。保留描述反馈用于CLIP重选。
+- 原始数据91视频、458表达式。独立重排ID并记录映射；仅按标注文件名补齐3个缺失的RGB帧索引，不读取GT像素进行推理。评测必须覆盖所有表达式和所需帧。
+
+## 不能声称已精确对齐的部分
+
+- 论文MAX_TURN=4未给计数伪代码；本实现定义为初次预测后最多4次反馈修正，最坏5个状态，最终状态仍验证。该假设记录到manifest。
+- QA保留旧工作区改进的prompt，覆盖原查询的可视属性，允许无法单帧验证时返回空列表。它与公开仓库静态Yes/No、仅type3生成的prompt不同；这是论文描述指导的实现选择，不能视为作者精确prompt。
+- 保留公开代码的框+正点SAM2提示；论文只明确描述框。
+- Ovis2.5-9B符合论文模型名；本地权重逐文件SHA256与Hugging Face固定revision比较。论文没有权重revision，无法证明与作者内部字节相同。
+- SAM2.1 Hiera Large符合公开post_processing.py；论文仅写SAM2，未披露精确版本。固定revision与校验见local_weight_verification.json、remote_model_metadata.json。
+- 单4090顺序推理，论文使用8×3090；保留BF16、FlashAttention2和模型采样配置。无训练，无利用GT筛选预测。
+
+## 运行
+
+模型环境：`/home/user1/miniconda3/envs/sec/bin/python`。模型通过符号链接复用，不进入Git。
+
+```bash
+cd /home/user1/NKU/Refer-Agent-reproduction
+/home/user1/miniconda3/envs/sec/bin/python tools/run_reasonvos.py --prepare-only
+sbatch tools/reasonvos.slurm
+python tools/check_progress.py
+```
+
+先单样本完整QA/选帧/反思/定位/SAM2/评测，再全量458表达式。每作业6小时，时限前保存断点并自动续投；真实错误停止，不能无条件重试掩盖失败。所有运行产物位于runs/reasonvos_paper4_20261114，运行前源码/输入身份固定，更改后必须新目录。
+
+完成标准：coverage缺帧0、summary标记complete_coverage、458条均纳入；报告原始未舍入指标与论文差距。既有历史66.86为不完整掩码诊断结果，不能作为新实现成绩。

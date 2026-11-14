@@ -16,18 +16,32 @@ import math
 import time
 import multiprocessing as mp
 import warnings
+from utils.reasonvos_runtime import (OVIS_PATH, DATA_ROOT, META_PATH, RUN_ROOT, atomic_json,
+    normalize_qa, ensure_identity, file_sha256)
+from utils.reasonvos_reflection import record_model_response, MODEL_TRACE
 
 warnings.filterwarnings("ignore")
 
-OUTPUT = "./output_query_qa"
-OVIS_CHECKPOINT = "path/to/AIDC-AI/Ovis2.5-9B"
+OUTPUT = str(RUN_ROOT / 'query_qa')
+OVIS_CHECKPOINT = OVIS_PATH
 
 
 def main(args):
     print("Inference only supports for batch size = 1")
     print(args)
+    if args.max_query_num < 1:
+        raise ValueError('Retry budget must be positive')
+    identity = {'schema': 'reasonvos-attribute-qa-v2', 'meta': file_sha256(META_PATH),
+                'source': file_sha256(__file__),
+                'runtime': file_sha256(os.path.join(os.path.dirname(__file__), 'reasonvos_runtime.py')),
+                'reflection': file_sha256(os.path.join(os.path.dirname(__file__), 'reasonvos_reflection.py')),
+                'model_config': file_sha256(os.path.join(OVIS_PATH, 'config.json')),
+                'generation_config': file_sha256(os.path.join(OVIS_PATH, 'generation_config.json')),
+                'retries': args.max_query_num, 'gpus': args.num_gpus, 'seed': args.seed}
+    ensure_identity(RUN_ROOT / 'qa_identity.json', identity,
+                    [RUN_ROOT / 'query_qa/checkpoints', RUN_ROOT / 'query_qa/reasonvos_query_qa.json'])
 
-    seed = 42 + utils.get_rank()
+    seed = args.seed + utils.get_rank()
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -39,9 +53,9 @@ def main(args):
     os.makedirs(output_dir, exist_ok=True)
 
     # load data
-    root = 'path/to/ReasonVOS'
+    root = str(DATA_ROOT)
     img_folder = os.path.join(root, 'JPEGImages')
-    meta_file = os.path.join(root, "meta_expressions.json")
+    meta_file = str(META_PATH)
     with open(meta_file, "r") as f:
         data = json.load(f)["videos"]
 
@@ -72,6 +86,8 @@ def main(args):
 
     for p in processes:
         p.join()
+        if p.exitcode != 0:
+            raise RuntimeError(f'QA worker exited with code {p.exitcode}')
 
     end_time = time.time()
     total_time = end_time - start_time
@@ -139,6 +155,7 @@ def convert_query_with_vlm(query, vl_model):
         )
 
     response = vl_model.text_tokenizer.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=True)
+    record_model_response('convert_query_with_vlm', question, response)
     # Extract JSON from the response (assuming the model outputs valid JSON)
     try:
         # Find the JSON part (after any thinking steps)
@@ -161,43 +178,29 @@ def convert_query_with_vlm(query, vl_model):
 
 generate_qa_prompt = """
 # Task
-Generate 0-3 static question answer sets based on the description provided. Output in JSON format.
+Decompose the ORIGINAL query below into 0-3 discriminative attribute checks for the
+referred target, following high-level concepts (category, state, role) and low-level
+attributes (appearance, shape, spatial location). Query: {description}
 
-# Input:
-description: {description}
-
-# Instruction:
-1. Identify the main subject from the description. This subject will be referred to as "the target" in all generated questions.
-2. All questions must be in "Is" format with exactly two options: "Yes" and "No".
-3. Question types to generate are **limited** to the following categories **only if explicitly mentioned in description**:
-   - Identity question: "Is the target a [identified subject]?"
-   - Appearance question about color, shape, or size
-   - Location question about position if the position is static and doesn't change
-4. A particular type of question can only be asked once, and relevant information should be presented within a single question without splitting it.
-
-# Rules:
-1. Each question must be in "Is" format with exactly two options: "Yes" and "No". The correct answer is always "Yes".
-2. If the subject is plural, change it to singular form.
-3. **Strictly analyze the description, only generate questions for aspects that are explicitly mentioned in the description. Do not make up any information not present in the description.**
-4. Questions must be directly extracted from the description with minimal modification.
-5. Each question category corresponds to **one** question. If certain categories are not mentioned in the description, don't generate such questions.
-
-# Output format: 
-[
-  {{
-    "question": "Is the target ...?",
-    "options": {{"A": "Yes", "B": "No"}},
-    "correct_answer": "A"
-  }},
-  ...
-]
+# Rules
+1. Each question starts with "Is" and has options A="Yes", B="No"; correct_answer="A".
+2. Ask only about constraints explicitly given by the query. Preserve negation,
+   comparisons and which participant plays the referred role. Never invent a color,
+   identity or appearance to make the implicit query easier.
+3. Reject vacuous checks such as "Is the target an item/object/thing?" that discard
+   the discriminating constraints. Combine related attributes into one question.
+4. Checks must be answerable about a highlighted target in a keyframe. Do not turn
+   temporal/causal claims into assumed static facts. If no discriminative attribute
+   is verifiable from a keyframe, return [] rather than a generic always-true check.
+   Temporal intent is analyzed over the video by the intent/existence agents.
+5. Apply these rules to all query types, including temporal and multi-target queries.
+   Use singular "the target" when checking each predicted target.
+6. Output ONLY a JSON list, including [] when no applicable check exists:
+[{{"question": "Is the target ...?", "options": {{"A": "Yes", "B": "No"}}, "correct_answer": "A"}}]
 """
 
 def generate_qa_with_vlm(description, type, vl_model):
-    if type == 3:
-        question = generate_qa_prompt.format(description=description)
-    else:
-        return []
+    question = generate_qa_prompt.format(description=description)
 
     messages = [
         {
@@ -235,6 +238,7 @@ def generate_qa_with_vlm(description, type, vl_model):
         )
 
     response = vl_model.text_tokenizer.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=True)
+    record_model_response('generate_qa_with_vlm', question, response)
 
     # Extract JSON from the response
     try:
@@ -245,51 +249,34 @@ def generate_qa_with_vlm(description, type, vl_model):
 
         qa_data = extract_qa_generation_output(response)
         if qa_data is None:
-            qa_data = []
+            raise ValueError('No JSON question list')
+        qa_data = normalize_qa(qa_data)
+        if len(qa_data) > 3:
+            raise ValueError('Expected at most 3 attribute questions')
 
     except Exception as e:
         print(f"Error in generate_qa_with_vlm: {e}")
-        qa_data = []
+        qa_data = None
 
     return qa_data
 
 def extract_qa_generation_output(data_string: str) -> Optional[List[Dict[str, Any]]]:
+    text = data_string.strip()
+    if text.startswith('```'):
+        match = re.fullmatch(r'```(?:json)?\s*(.*?)\s*```', text, re.DOTALL)
+        if not match:
+            return None
+        text = match.group(1)
     try:
-        return json.loads(data_string)
-    except:
-        try:
-            fixed_str = data_string.replace('{{', '{').replace('}}', '}')
-            return json.loads(fixed_str)
-        except:
-            try:
-                pattern = r'\{[^{}]*\{[^{}]*\}[^{}]*\}'
-                matches = re.findall(pattern, data_string)
-                results = []
-                for match in matches:
-                    cleaned = match.strip()
-                    if cleaned.startswith('{{'):
-                        cleaned = '{' + cleaned[2:-2] + '}'
-                    results.append(json.loads(cleaned))
-                return results
-            except:
-                pattern = r'"question":\s*"([^"]*)".*?"options":\s*\{([^}]*)\}.*?"correct_answer":\s*"([^"]*)"'
-                matches = re.findall(pattern, data_string, re.DOTALL)
-                results = []
-                for match in matches:
-                    question, options_text, answer = match
-                    options = {}
-                    for opt in ['A', 'B', 'C', 'D']:
-                        opt_match = re.search(f'"{opt}":\s*"([^"]*)"', options_text)
-                        if opt_match:
-                            options[opt] = opt_match.group(1)
-                    results.append({
-                        'question': question,
-                        'options': options,
-                        'correct_answer': answer
-                    })
-                return results
+        value = json.loads(text)
+        return normalize_qa(value)
+    except (ValueError, TypeError):
+        return None
 
 def sub_processor(lock, pid, args, data, save_path_prefix, img_folder, video_list, result_dict):
+    torch.manual_seed(args.seed + pid)
+    np.random.seed(args.seed + pid)
+    random.seed(args.seed + pid)
     text = 'processor %d' % pid
     with lock:
         progress = tqdm(
@@ -307,8 +294,13 @@ def sub_processor(lock, pid, args, data, save_path_prefix, img_folder, video_lis
         attn_implementation="flash_attention_2",
         trust_remote_code=True,
     ).to(device)
+    atomic_json({'ovis': ovis_model.generation_config.to_dict(),
+                 'llm': ovis_model.llm.generation_config.to_dict()},
+                RUN_ROOT / f'qa_generation_config_{pid}.json')
 
+    ovis_model.eval()
     results = {}
+    encountered_new = False
 
     # 1. For each video
     for video in video_list:
@@ -332,6 +324,27 @@ def sub_processor(lock, pid, args, data, save_path_prefix, img_folder, video_lis
             exp = meta[i]["exp"]
             exp_id = meta[i]["exp_id"]
             video_exp = f'{video}/{exp_id}'
+            checkpoint = os.path.join(save_path_prefix, 'checkpoints', video, exp_id + '.json')
+            if os.path.exists(checkpoint):
+                if encountered_new:
+                    raise ValueError('QA resume must be a complete prefix')
+                results[video_exp] = json.load(open(checkpoint))
+                entry = results[video_exp]
+                if entry['exp'] != exp.strip():
+                    raise ValueError('QA checkpoint query mismatch')
+                entry['qa_complete'] = normalize_qa(entry['qa_complete'])
+                for name, suffix in [('rng', '.rng.pt'), ('trace', '.trace.json')]:
+                    if file_sha256(checkpoint + suffix) != entry['artifact_sha256'][name]:
+                        raise ValueError('QA checkpoint artifact mismatch')
+                rng = torch.load(checkpoint + '.rng.pt', map_location='cpu', weights_only=False)
+                random.setstate(rng['python'])
+                np.random.set_state(rng['numpy'])
+                torch.set_rng_state(rng['torch'])
+                torch.cuda.set_rng_state(rng['cuda'], device)
+                continue
+            encountered_new = True
+            trace = []
+            token = MODEL_TRACE.set(trace)
 
             # exp = 'Which shoe(s) is/are on the right foot of the man?'
 
@@ -347,26 +360,40 @@ def sub_processor(lock, pid, args, data, save_path_prefix, img_folder, video_lis
                 else:
                     description = description.strip()
 
-                if type == 3:
-                    for query_round in range(args.max_query_num):
-                        qa_complete = generate_qa_with_vlm(description, type, ovis_model)
-                        if qa_complete:
-                            break
-                else:
-                    qa_complete = []
-                
+                if not description or type not in (1, 2, 3):
+                    raise ValueError('Query conversion failed after retries')
+
+                for query_round in range(args.max_query_num):
+                    # Preserve the original query instead of a potentially lossy conversion.
+                    qa_complete = generate_qa_with_vlm(exp, type, ovis_model)
+                    if qa_complete is not None:
+                        break
+                if qa_complete is None:
+                    raise ValueError('Attribute QA generation failed after retries')
+
                 results[video_exp] = {
                     'exp': exp,
                     'description': description,
                     'type': type,
                     'qa_complete': qa_complete,
+                    'qa_status': 'applicable' if qa_complete else 'not_applicable',
+                    'qa_schema': 'reasonvos-attribute-qa-v2',
                 }
-
-            except Exception as e:
-                with open(f'error_{pid}.txt', 'a') as f:
-                    f.write(str(e) + '\n')
-                    f.write(f'{video}/{exp_id}\n')
-                continue
+                atomic_json(trace, checkpoint + '.trace.json')
+                rng = {'python': random.getstate(), 'numpy': np.random.get_state(),
+                       'torch': torch.get_rng_state(), 'cuda': torch.cuda.get_rng_state(device)}
+                torch.save(rng, checkpoint + '.rng.pt.tmp')
+                os.replace(checkpoint + '.rng.pt.tmp', checkpoint + '.rng.pt')
+                results[video_exp]['artifact_sha256'] = {
+                    'rng': file_sha256(checkpoint + '.rng.pt'),
+                    'trace': file_sha256(checkpoint + '.trace.json')}
+                atomic_json(results[video_exp], checkpoint)
+            except Exception:
+                atomic_json({'video': video, 'exp_id': exp_id, 'model_calls': trace},
+                            os.path.join(save_path_prefix, 'failed_expression.json'))
+                raise
+            finally:
+                MODEL_TRACE.reset(token)
 
         with lock:
             progress.update(1)
@@ -385,6 +412,7 @@ if __name__ == '__main__':
                         help='valid or valid_u')
     parser.add_argument("--refine_round", default=0, type=int)
     parser.add_argument("--max_query_num", default=3, type=int)
+    parser.add_argument('--seed', default=42, type=int)
     parser.add_argument('--num_gpus', '-ng', type=int, required=True,
                         help='number of CUDA gpus to run on. mutually exclusive with \'gpu_ids\'')
     args = parser.parse_args()

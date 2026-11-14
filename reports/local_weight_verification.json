@@ -1,0 +1,56 @@
+[
+  {
+    "repo": "AIDC-AI/Ovis2.5-9B",
+    "revision": "d73b2283ae2a930b7762f8d7b8b8a3f0f3b5c3bd",
+    "name": "model-00001-of-00004.safetensors",
+    "bytes": 4905356464,
+    "expected_sha256": "156f99e6196bf357567737efe2658cd81498731071cf7102af75a62f62563a0f",
+    "actual_sha256": "156f99e6196bf357567737efe2658cd81498731071cf7102af75a62f62563a0f",
+    "match": true
+  },
+  {
+    "repo": "AIDC-AI/Ovis2.5-9B",
+    "revision": "d73b2283ae2a930b7762f8d7b8b8a3f0f3b5c3bd",
+    "name": "model-00002-of-00004.safetensors",
+    "bytes": 4915960936,
+    "expected_sha256": "79aed96720f1dbc0b8b4f0e59284235a2300b40255f39d31c39fa6f82de075cb",
+    "actual_sha256": "79aed96720f1dbc0b8b4f0e59284235a2300b40255f39d31c39fa6f82de075cb",
+    "match": true
+  },
+  {
+    "repo": "AIDC-AI/Ovis2.5-9B",
+    "revision": "d73b2283ae2a930b7762f8d7b8b8a3f0f3b5c3bd",
+    "name": "model-00003-of-00004.safetensors",
+    "bytes": 4974672744,
+    "expected_sha256": "16eaccd4c4fbd3a1721fe9ed50ea99ee36d16effbd2ba1ccf62ddb86d9136559",
+    "actual_sha256": "16eaccd4c4fbd3a1721fe9ed50ea99ee36d16effbd2ba1ccf62ddb86d9136559",
+    "match": true
+  },
+  {
+    "repo": "AIDC-AI/Ovis2.5-9B",
+    "revision": "d73b2283ae2a930b7762f8d7b8b8a3f0f3b5c3bd",
+    "name": "model-00004-of-00004.safetensors",
+    "bytes": 3553737368,
+    "expected_sha256": "79cb70a40fc3720d6e90a84e59ed035be93f84a832c423f999acc651f3b2c811",
+    "actual_sha256": "79cb70a40fc3720d6e90a84e59ed035be93f84a832c423f999acc651f3b2c811",
+    "match": true
+  },
+  {
+    "repo": "AIDC-AI/Ovis2.5-9B",
+    "revision": "d73b2283ae2a930b7762f8d7b8b8a3f0f3b5c3bd",
+    "name": "tokenizer.json",
+    "bytes": 11422654,
+    "expected_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+    "actual_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+    "match": true
+  },
+  {
+    "repo": "facebook/sam2.1-hiera-large",
+    "revision": "665f8e2ad61cf5f53d65644ff27c8ee525124610",
+    "name": "sam2.1_hiera_large.pt",
+    "bytes": 898083611,
+    "expected_sha256": "2647878d5dfa5098f2f8649825738a9345572bae2d4350a2468587ece47dd318",
+    "actual_sha256": "2647878d5dfa5098f2f8649825738a9345572bae2d4350a2468587ece47dd318",
+    "match": true
+  }
+]

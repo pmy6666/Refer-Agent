@@ -212,6 +212,26 @@ def stitch_images(ori_image_list, key_frame_index, img_size=None):
     return canvas
 
 
+def simple_concat_frames(ori_image_list, key_frame_index=0, img_size=None):
+    # Same strip layout as the other dataset implementations in this repository.
+    if not ori_image_list:
+        return None
+    images = []
+    for original in ori_image_list:
+        image = original.copy()
+        if img_size:
+            image.thumbnail(img_size, Image.Resampling.LANCZOS)
+        images.append(image)
+    w, h = images[0].size
+    horizontal = h <= w
+    canvas = Image.new('RGB', (w * len(images), h) if horizontal else (w, h * len(images)),
+                       (240, 240, 240))
+    for index, image in enumerate(images):
+        labeled = add_simple_number_label(image, index + 1, False)
+        canvas.paste(labeled, (index * w, 0) if horizontal else (0, index * h))
+    return canvas
+
+
 def add_simple_number_label(image, number, is_key_frame=False):
     img = image.copy()
     draw = ImageDraw.Draw(img)

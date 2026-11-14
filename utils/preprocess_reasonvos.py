@@ -7,6 +7,9 @@ import warnings
 from PIL import Image
 import torch
 from transformers import CLIPProcessor, CLIPModel
+from utils.reasonvos_runtime import (CLIP_PATH, META_PATH, DATA_ROOT, SCORES_PATH,
+    atomic_json, ensure_identity, file_sha256)
+from pathlib import Path
 from tqdm import tqdm
 import os
 
@@ -16,7 +19,7 @@ warnings.filterwarnings('ignore')
 
 
 class ImageScorer:
-    def __init__(self, clip_model_name="path/to/openai/clip-vit-base-patch32",
+    def __init__(self, clip_model_name=CLIP_PATH,
                  iqa_metric_name="brisque", iqa_metric_mode="NR"):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -74,10 +77,7 @@ def batch_score_videos(base_dir: str,
                        weights: Dict[str, float] = None,
                        iqa_metric_name: str = "brisque") -> Dict[str, Dict]:
     """Batch score all image frames in multiple video directories"""
-    meta = json.load(open('path/to/ReasonVOS/meta_expressions.json'))['videos']
-
-    scorer = ImageScorer(iqa_metric_name=iqa_metric_name)
-    video_scores = {}
+    meta = json.load(open(META_PATH))['videos']
 
     if weights is None:
         weights = {'clip': 1.0, 'iqa': 0}
@@ -87,7 +87,18 @@ def batch_score_videos(base_dir: str,
     if total_weight > 0:
         weights = {k: v / total_weight for k, v in weights.items()}
 
+    identity = {'schema': 'reasonvos-clip-v2', 'meta': file_sha256(META_PATH),
+                'source': file_sha256(__file__), 'image_root': str(Path(base_dir).resolve()),
+                'model_path': CLIP_PATH, 'weights': weights,
+                'model_config': file_sha256(Path(CLIP_PATH) / 'config.json')}
+    ensure_identity(SCORES_PATH.parent / 'clip_identity.json', identity, [SCORES_PATH])
+    scorer = ImageScorer(iqa_metric_name=iqa_metric_name)
+    video_scores = json.load(open(SCORES_PATH)) if SCORES_PATH.exists() else {}
+
     for video_dir_name in tqdm(meta.keys()):
+        expected_ids = {str(e['exp_id']) for e in meta[video_dir_name]['expressions']}
+        if expected_ids <= set(video_scores.get(video_dir_name, {}).get('CLIP', {})):
+            continue
         video_path = os.path.join(base_dir, video_dir_name)
         supported_formats = ('.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp')
 
@@ -147,16 +158,18 @@ def batch_score_videos(base_dir: str,
 
             video_scores[video_dir_name]['CLIP'][exp_id] = exp_scores
 
+        atomic_json(video_scores, SCORES_PATH)
+
     return video_scores
 
 
 def main():
     parser = argparse.ArgumentParser(description='Video frame quality scoring tool.')
-    parser.add_argument('--input_dir', default='path/to/ReasonVOS/JPEGImages',
+    parser.add_argument('--input_dir', default=str(DATA_ROOT / 'JPEGImages'),
                         help='Path to the directory containing video frame folders.')
     parser.add_argument('--weights', '-w', default='1.0,0',
                         help='Weights for (clip, iqa).')
-    parser.add_argument('--output', '-o', default='path/to/video_scores_reasonvos.json',
+    parser.add_argument('--output', '-o', default=str(SCORES_PATH),
                         help='Output JSON file path.')
     parser.add_argument('--iqa_metric', default='brisque',
                         help='IQA metric name from pyiqa.')

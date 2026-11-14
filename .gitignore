@@ -1,0 +1,11 @@
+AIDC-AI/
+openai/
+.downloads/
+runs/
+__pycache__/
+*.py[cod]
+*.so
+sam2/checkpoints/*.pt
+AIDC-AI
+openai
+.downloads

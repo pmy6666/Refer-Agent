@@ -1,0 +1,452 @@
+{
+  "AIDC-AI/Ovis2.5-9B": {
+    "_id": "689ecb9afc79f2b3ec739847",
+    "id": "ATH-MaaS/Ovis2.5-9B",
+    "private": false,
+    "pipeline_tag": "image-text-to-text",
+    "library_name": "transformers",
+    "tags": [
+      "transformers",
+      "safetensors",
+      "ovis2_5",
+      "text-generation",
+      "MLLM",
+      "image-text-to-text",
+      "conversational",
+      "custom_code",
+      "en",
+      "zh",
+      "dataset:AIDC-AI/Ovis-dataset",
+      "arxiv:2508.11737",
+      "arxiv:2405.20797",
+      "license:apache-2.0",
+      "eval-results",
+      "region:us"
+    ],
+    "downloads": 4540,
+    "likes": 308,
+    "modelId": "ATH-MaaS/Ovis2.5-9B",
+    "author": "ATH-MaaS",
+    "sha": "d73b2283ae2a930b7762f8d7b8b8a3f0f3b5c3bd",
+    "lastModified": "2026-02-13T03:17:32.000Z",
+    "gated": false,
+    "disabled": false,
+    "widgetData": [
+      {
+        "text": "Hi, what can you help me with?"
+      },
+      {
+        "text": "What is 84 * 3 / 2?"
+      },
+      {
+        "text": "Tell me an interesting fact about the universe!"
+      },
+      {
+        "text": "Explain quantum computing in simple terms."
+      }
+    ],
+    "model-index": null,
+    "config": {
+      "architectures": [
+        "Ovis2_5"
+      ],
+      "auto_map": {
+        "AutoConfig": "configuration_ovis2_5.Ovis2_5_Config",
+        "AutoModelForCausalLM": "modeling_ovis2_5.Ovis2_5"
+      },
+      "model_type": "ovis2_5",
+      "tokenizer_config": {
+        "bos_token": null,
+        "eos_token": "<|im_end|>",
+        "unk_token": null,
+        "pad_token": "<|endoftext|>",
+        "chat_template": "{%- for message in messages %}{{- '<|im_start|>' + message.role + '\n'}}{%- if message.role == 'system' or message.role == 'user' %}{%- if message.content is string %}{{- message.content | replace('<image>', '') | replace('<video>', '') }}{%- else %}{%- for item in message.content %}{%- if item.type == 'text' and 'text' in item %}{{- item.text | replace('<image>', '') | replace('<video>', '') }}{%- elif item.type == 'image' %}{{- '<image>'}}{%- elif item.type == 'video' %}{{- '<video>'}}{%- else %}{{- raise_exception('Invalid content type. Supported types for system and user are text, image, video.')}}{%- endif %}{%- if not loop.last %}{{- '\n'}}{%- endif %}{%- endfor %}{%- endif %}{%- elif message.role == 'assistant' %}{%- set content = '' %}{%- if message.content is string %}{%- set content = message.content | replace('<image>', '') | replace('<video>', '') %}{%- else %}{%- set ns = namespace(content='') -%}{%- for item in message.content %}{%- if item.type == 'text' and 'text' in item %}{%- set ns.content = ns.content ~ (item.text | replace('<image>', '') | replace('<video>', '')) %}{%- else %}{{- raise_exception('Invalid content type. Supported type for assistant is text.')}}{%- endif %}{%- endfor %}{%- set content = ns.content -%}{%- endif %}{%- set content = content.split('</think>')[-1].lstrip('\n') %}{{- content }}{%- else %}{{- raise_exception('Invalid role. Supported roles are system, user, assistant.')}}{%- endif %}{{- '<|im_end|>\n'}}{%- endfor %}{%- if add_generation_prompt %}{{- '<|im_start|>assistant\n' }}{%- if enable_thinking is defined and enable_thinking is false %}{{- '<think>\n\n</think>\n\n' }}{%- endif %}{%- endif %}"
+      },
+      "processor_config": {
+        "chat_template": "{%- for message in messages %}{{- '<|im_start|>' + message.role + '\n'}}{%- if message.role == 'system' or message.role == 'user' %}{%- if message.content is string %}{{- message.content | replace('<image>', '') | replace('<video>', '') }}{%- else %}{%- for item in message.content %}{%- if item.type == 'text' and 'text' in item %}{{- item.text | replace('<image>', '') | replace('<video>', '') }}{%- elif item.type == 'image' %}{{- '<image>'}}{%- elif item.type == 'video' %}{{- '<video>'}}{%- else %}{{- raise_exception('Invalid content type. Supported types for system and user are text, image, video.')}}{%- endif %}{%- if not loop.last %}{{- '\n'}}{%- endif %}{%- endfor %}{%- endif %}{%- elif message.role == 'assistant' %}{%- set content = '' %}{%- if message.content is string %}{%- set content = message.content | replace('<image>', '') | replace('<video>', '') %}{%- else %}{%- set ns = namespace(content='') -%}{%- for item in message.content %}{%- if item.type == 'text' and 'text' in item %}{%- set ns.content = ns.content ~ (item.text | replace('<image>', '') | replace('<video>', '')) %}{%- else %}{{- raise_exception('Invalid content type. Supported type for assistant is text.')}}{%- endif %}{%- endfor %}{%- set content = ns.content -%}{%- endif %}{%- set content = content.split('</think>')[-1].lstrip('\n') %}{{- content }}{%- else %}{{- raise_exception('Invalid role. Supported roles are system, user, assistant.')}}{%- endif %}{{- '<|im_end|>\n'}}{%- endfor %}{%- if add_generation_prompt %}{{- '<|im_start|>assistant\n' }}{%- if enable_thinking is defined and enable_thinking is false %}{{- '<think>\n\n</think>\n\n' }}{%- endif %}{%- endif %}"
+      }
+    },
+    "cardData": {
+      "license": "apache-2.0",
+      "datasets": [
+        "AIDC-AI/Ovis-dataset"
+      ],
+      "library_name": "transformers",
+      "tags": [
+        "MLLM"
+      ],
+      "pipeline_tag": "image-text-to-text",
+      "language": [
+        "en",
+        "zh"
+      ]
+    },
+    "transformersInfo": {
+      "auto_model": "AutoModelForCausalLM",
+      "custom_class": "modeling_ovis2_5.Ovis2_5",
+      "pipeline_tag": "text-generation"
+    },
+    "siblings": [
+      {
+        "rfilename": ".gitattributes",
+        "blobId": "52373fe24473b1aa44333d318f578ae6bf04b49b",
+        "size": 1570
+      },
+      {
+        "rfilename": "LICENSE",
+        "blobId": "522e362a614385ed1d4d5fb9763eca960784b6c4",
+        "size": 548
+      },
+      {
+        "rfilename": "NOTICE",
+        "blobId": "d7db7f83ae74d1da885293c137e223081ab0de72",
+        "size": 416
+      },
+      {
+        "rfilename": "README.md",
+        "blobId": "800e1a396a300ee2bfdb993abe532c9873cd8f0b",
+        "size": 14606
+      },
+      {
+        "rfilename": "added_tokens.json",
+        "blobId": "b54f9135e44c1e81047e8d05cb027af8bc039eed",
+        "size": 707
+      },
+      {
+        "rfilename": "chat_template.json",
+        "blobId": "622708c37df0b4cec4bfb72bd282a45d6e990228",
+        "size": 1692
+      },
+      {
+        "rfilename": "config.json",
+        "blobId": "098cd3f90374ba7e8a41352d64c56cc1e7ac48f3",
+        "size": 2071
+      },
+      {
+        "rfilename": "configuration_ovis2_5.py",
+        "blobId": "0a90e12def7a1ae18e663bda3741eb197c44d2e0",
+        "size": 3936
+      },
+      {
+        "rfilename": "generation_config.json",
+        "blobId": "d44b45bfc98fbdf410b07eda1b654fc9bce96b47",
+        "size": 277
+      },
+      {
+        "rfilename": "merges.txt",
+        "blobId": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7",
+        "size": 1671853
+      },
+      {
+        "rfilename": "model-00001-of-00004.safetensors",
+        "blobId": "eaf4ffe826045c39f96e4af76cea30a5d9da67ce",
+        "size": 4905356464,
+        "lfs": {
+          "sha256": "156f99e6196bf357567737efe2658cd81498731071cf7102af75a62f62563a0f",
+          "size": 4905356464,
+          "pointerSize": 135
+        }
+      },
+      {
+        "rfilename": "model-00002-of-00004.safetensors",
+        "blobId": "60ed5104a7a34b37aa4ec3c9f64b97fdc010aa5d",
+        "size": 4915960936,
+        "lfs": {
+          "sha256": "79aed96720f1dbc0b8b4f0e59284235a2300b40255f39d31c39fa6f82de075cb",
+          "size": 4915960936,
+          "pointerSize": 135
+        }
+      },
+      {
+        "rfilename": "model-00003-of-00004.safetensors",
+        "blobId": "f1210906b80f4b0a919e8aeb32758c1ddfb97823",
+        "size": 4974672744,
+        "lfs": {
+          "sha256": "16eaccd4c4fbd3a1721fe9ed50ea99ee36d16effbd2ba1ccf62ddb86d9136559",
+          "size": 4974672744,
+          "pointerSize": 135
+        }
+      },
+      {
+        "rfilename": "model-00004-of-00004.safetensors",
+        "blobId": "948d55b62f029f4b351298423934008788bbb5c2",
+        "size": 3553737368,
+        "lfs": {
+          "sha256": "79cb70a40fc3720d6e90a84e59ed035be93f84a832c423f999acc651f3b2c811",
+          "size": 3553737368,
+          "pointerSize": 135
+        }
+      },
+      {
+        "rfilename": "model.safetensors.index.json",
+        "blobId": "817674f62b0fffddf8003f3f9bb371e63cfb4e11",
+        "size": 84690
+      },
+      {
+        "rfilename": "modeling_ovis2_5.py",
+        "blobId": "8984df165c84ccc3df06c3b5bb983f0f2e9e0d6a",
+        "size": 44342
+      },
+      {
+        "rfilename": "preprocessor_config.json",
+        "blobId": "64b9bf1b69656ce79e8c6b34fd066d37b4edb534",
+        "size": 394
+      },
+      {
+        "rfilename": "special_tokens_map.json",
+        "blobId": "ac23c0aaa2434523c494330aeb79c58395378103",
+        "size": 613
+      },
+      {
+        "rfilename": "tokenizer.json",
+        "blobId": "cd71f61a15a522601badb3dc960d800d9cb3766c",
+        "size": 11422654,
+        "lfs": {
+          "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+          "size": 11422654,
+          "pointerSize": 133
+        }
+      },
+      {
+        "rfilename": "tokenizer_config.json",
+        "blobId": "dde2dcb5a0b35b5f5de513353663c368d0f07355",
+        "size": 7250
+      },
+      {
+        "rfilename": "vocab.json",
+        "blobId": "4783fe10ac3adce15ac8f358ef5462739852c569",
+        "size": 2776833
+      }
+    ],
+    "spaces": [
+      "ATH-MaaS/Ovis2.5-9B",
+      "ATH-MaaS/Ovis2.5-2B",
+      "davanstrien/ocr-time-machine",
+      "aquanode/gpu-vram-calculator",
+      "Agung1453/Ovis2.5-9B",
+      "storytracer/ocr-time-machine",
+      "taylorjacksonwang/Ovis2.5-2B",
+      "joedorfman/Ovis2.5-2B",
+      "multimodalart/Ovis2.5-9B-zerogpu"
+    ],
+    "createdAt": "2025-08-15T05:54:34.000Z",
+    "safetensors": {
+      "parameters": {
+        "BF16": 9174807784
+      },
+      "total": 9174807784
+    },
+    "usedStorage": 18361150166
+  },
+  "facebook/sam2.1-hiera-large": {
+    "_id": "66f20f13c95c2e91726ef9cb",
+    "id": "facebook/sam2.1-hiera-large",
+    "private": false,
+    "pipeline_tag": "mask-generation",
+    "library_name": "transformers",
+    "tags": [
+      "transformers",
+      "safetensors",
+      "sam2_video",
+      "feature-extraction",
+      "mask-generation",
+      "arxiv:2408.00714",
+      "license:apache-2.0",
+      "endpoints_compatible",
+      "deploy:azure",
+      "region:us"
+    ],
+    "downloads": 253672,
+    "likes": 155,
+    "modelId": "facebook/sam2.1-hiera-large",
+    "author": "facebook",
+    "sha": "665f8e2ad61cf5f53d65644ff27c8ee525124610",
+    "lastModified": "2025-08-15T21:19:57.000Z",
+    "gated": false,
+    "disabled": false,
+    "model-index": null,
+    "config": {
+      "architectures": [
+        "Sam2VideoModel"
+      ],
+      "model_type": "sam2_video"
+    },
+    "cardData": {
+      "license": "apache-2.0",
+      "pipeline_tag": "mask-generation",
+      "library_name": "transformers"
+    },
+    "transformersInfo": {
+      "auto_model": "AutoModel",
+      "pipeline_tag": "feature-extraction",
+      "processor": "AutoProcessor"
+    },
+    "siblings": [
+      {
+        "rfilename": ".gitattributes",
+        "blobId": "a6344aac8c09253b3b630fb776ae94478aa0275b",
+        "size": 1519
+      },
+      {
+        "rfilename": "README.md",
+        "blobId": "be863d6696ff1dd6ea8c88ab46ae04e5f7fe68e6",
+        "size": 19979
+      },
+      {
+        "rfilename": "config.json",
+        "blobId": "62a1dd93657b383ec1e9bad75699747951d307c7",
+        "size": 5705
+      },
+      {
+        "rfilename": "model.safetensors",
+        "blobId": "22a436a3f5e17bb540c9c5230f28e34f45705ed3",
+        "size": 897897416,
+        "lfs": {
+          "sha256": "dc407dce21301fd94abb395c5099b4f2c455fdc8a8f261ac3d0ea6d4cd197230",
+          "size": 897897416,
+          "pointerSize": 134
+        }
+      },
+      {
+        "rfilename": "preprocessor_config.json",
+        "blobId": "8499e53cb79bf1786a890021550e6994b9808f39",
+        "size": 683
+      },
+      {
+        "rfilename": "processor_config.json",
+        "blobId": "7556f607c3581a19f545de09d8b3fc98502b9f36",
+        "size": 95
+      },
+      {
+        "rfilename": "sam2.1_hiera_l.yaml",
+        "blobId": "33c9097f34ea90beae52776eb88ad8eb1632ab66",
+        "size": 3798
+      },
+      {
+        "rfilename": "sam2.1_hiera_large.pt",
+        "blobId": "a4229617ddc0bd034440718c11588c0bbcf85a70",
+        "size": 898083611,
+        "lfs": {
+          "sha256": "2647878d5dfa5098f2f8649825738a9345572bae2d4350a2468587ece47dd318",
+          "size": 898083611,
+          "pointerSize": 134
+        }
+      },
+      {
+        "rfilename": "video_preprocessor_config.json",
+        "blobId": "aceb9b5b612e726cea11ae4db21c0964629aac3a",
+        "size": 705
+      }
+    ],
+    "spaces": [
+      "hugging-apps/vq-sam",
+      "merve/EdgeTAM",
+      "facebook/EdgeTAM",
+      "Liratanak/kira-lab-wan-preview-nsfw-velcroft",
+      "cinderholm/wan-i2v",
+      "yonigozlan/Segment-Anything-2-video-tracking",
+      "ByteDance/XVerse",
+      "Mar2Ding/SAM2Long-Demo",
+      "SammyLim/VideoMaMa",
+      "OraRL/video-ora-9b-demo",
+      "cyun9286/Align3R",
+      "marciowb/kira-lab-wan-preview-nsfw-velcroft",
+      "hujiecpp/PE3R",
+      "yujunwei04/UnSAMv2",
+      "yslan/ObjCtrl-2.5D",
+      "jiani-huang/LASER",
+      "Kapanther/manga-translator",
+      "speridlabs/eneas",
+      "not-lain/gpu-utils",
+      "PolyU-ChenLab/UniPixel",
+      "multimodalart/VOID-Quadmask-Reasoner",
+      "IbrahimaThioye/sam_yolo_flask",
+      "sitatech/vibe-shopping",
+      "ghjjhv/wan-i2v-kira",
+      "hysts-gradio-custom-html/sam-prompter-demo",
+      "ufrik/kira-lab-wan-preview-nsfw-velcroft",
+      "MarcHabib/segmentation_yolo_sam",
+      "MogensR/VideoBackgroundReplacer",
+      "amaye15/Steroid-SAM-2.1",
+      "nycu-cplab/3AM",
+      "pormungtai/wan2-2-fp8da-aoti-preview",
+      "qq456cvb/UniPose9D",
+      "FudanCVL/sam2matting",
+      "fffiloni/Viggle-Mine",
+      "123LETSPLAY/maskgenarator",
+      "GF-John/sam2",
+      "mila2030/sam2-fastapi",
+      "Sherry4869/RAG-SEG",
+      "hanjang/Interactive-MEN-RT-Demo",
+      "lxzcpro/TextEraser",
+      "Sellopale/EdgeTAM",
+      "sumitsingh830/SAM2-Image-Auto-Segment",
+      "cydyffufufurty/wan-i2v-kira",
+      "dslisleedh/StAR-8B",
+      "runebloodstone/wan-i2v-kira",
+      "hugging-apps/openearthagent-demo",
+      "aristidemartin9/art-detourage-mvp",
+      "tyriaa/Segmentation_project",
+      "tyriaa/project",
+      "svjack/SAM2Long-Demo",
+      "LPX55/SAM2_1-Image-Predictor-Masking-Tool-CPU",
+      "vk888/Segment_Microscopic_images_Meta_Segment_Anything",
+      "Dhruv-Ty/MedSam",
+      "jithin14/SAM-2-RedSpiderMites",
+      "Red1618/Lightning-Painter-Multitool",
+      "pascal-maker/medicalaiapp",
+      "seawolf2357/langscene",
+      "seawolf2357/LangScene-X",
+      "matmaxx6/merchbag",
+      "rohitmalavathu/mitochondria-segmentation",
+      "SteveXKR/Recolor",
+      "Sathvik-kota/seg-service",
+      "moein99/Echo",
+      "gbreadman13/sam2-api",
+      "clementlr/EdgeTAM-mps",
+      "chenwang/physctrl",
+      "samwell/medrax2",
+      "V4ldeLund/AnomalyDetection",
+      "BiasLab2025/detection_base",
+      "HiteshGG/SAM2Long-Demo",
+      "HiteshGG/EdgeTAM1",
+      "HiteshGG/EdgeTAM",
+      "milos-milic/InSono",
+      "KevinX-Penn28/LASER",
+      "BiasLab2025/ISR",
+      "vinesnt/wan2-2-fp8da-aoti-preview",
+      "vinesnt/1111",
+      "s1s2multiset/1111",
+      "Devteamdl/VOID-Quadmask-Reasoner-api",
+      "aaryanpethkar483/Healthcare",
+      "AthithyaLogan/SAMSpade",
+      "Kvy19/dinosam2",
+      "Dorotheou/1111",
+      "sksnddje/wan2-2-fp8da-aoti-preview",
+      "leo8875/wan2-2-fp8da-aoti-preview-nsfw",
+      "shardtate-labs/piengi-backend",
+      "luowenboAHU/Segment-Anything-2-video-tracking",
+      "liguoxian83/wan2-2-fp8da-aoti-preview-nsfw",
+      "NadaHamouda/medrax2",
+      "hacktogone/cadrimages-saas",
+      "freebg/magic-grab",
+      "EAIRobot/wan2-2-fp8da-aoti-preview-nsfw",
+      "Manolouc/Geoglyph_SAM2",
+      "RobinsAIWorld/EdgeTAM",
+      "labai-mf/LASER",
+      "Atdevindotcom/wan2-2-fp8da-aoti-preview-nsfw",
+      "mirefall/wan-i2v-kira",
+      "ashprow/wan-i2v-kira",
+      "vathsal14/vat-safe-backend",
+      "Ftyhgf/wan-i2v-kira"
+    ],
+    "createdAt": "2024-09-24T01:00:03.000Z",
+    "safetensors": {
+      "parameters": {
+        "F32": 224447154
+      },
+      "total": 224447154
+    },
+    "usedStorage": 2694070080
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "source": "/home/user1/NKU/Refer-Agent",
+  "description": "Existing uncommitted repairs imported for independent review; hashes before local adjustments",
+  "files": {
+    "eval/Ovis_infer_reasonvos.py": "8b3539699dc4c5e45eb8788b68be52d7d72c0a95c36f49684c3b8d1a0de53ffd",
+    "eval/eval_reasonvos.py": "83d3d52a51e5fe33a435e3a262bf05a77346401304b069cca242bc47bcf3d5a3",
+    "eval/post_processing.py": "b29edc28dabc5deef3118dffbe1ff1dea0b6dd24f6db941f96f9c9cc4c578801",
+    "utils/Ovis_preprocess_query_reasonvos.py": "c891bb4ab1f35f0345f77c4c1494317c9312938083195a3523affb6df8a0022d",
+    "utils/concat_frames_reasonvos.py": "65254f8baa627bc68be041eee05c94a85c65ec996cc6b45869cb6133c618a602",
+    "utils/preprocess_reasonvos.py": "9bcdec3014e88743effe762e291fd637b13eab5bca945e9e9f38afacfd3960ef",
+    "utils/reorder_reasonvos_meta.py": "1d582da4d0d7795e083f9299ebf59020f7d21049ea973e35a60b9a656aaefae4",
+    "utils/reasonvos_pipeline.py": "fb225d95cb83fd6f6f33688ae51ed3bff1ae010f7f54f1a9f7d3cdc567e004d0",
+    "utils/reasonvos_reflection.py": "ce169d35b5c21b4be24ec4dab6255a2e2a4977204095021c4d638ea71da65b2c",
+    "utils/reasonvos_runtime.py": "f10e29f4c61fd6409080a925066a02b07067b3e1bc2622c09770ccbea82360d9",
+    "tools/run_reasonvos.py": "17e7ffcdda1f212797075cd1823a4675434b66b84c24b58905c9665e9c64b247",
+    "tools/check_progress.py": "4283bd0865d723b09d304e7905c197a7da02ab1bab3627582411781b144ddc4e",
+    "tests/test_reasonvos_reproduction.py": "8c3556698bcc5f6c7f154218dfd3ea22950e7691ba2141a5f5f2a7c30bd35a37"
+  }
+}

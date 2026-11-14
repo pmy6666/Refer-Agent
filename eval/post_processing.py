@@ -12,18 +12,44 @@ import sys
 sys.path.append("./sam2")
 import multiprocessing as mp
 import warnings
+from pathlib import Path
+from utils.reasonvos_runtime import ensure_identity, file_sha256
 
 warnings.filterwarnings("ignore")
 
 from sam2.build_sam import build_sam2_video_predictor, build_sam2
 
 OUTPUT = "path/to/output"
+SAM2_CHECKPOINT = "sam2/checkpoints/sam2.1_hiera_large.pt"
+SAM2_CONFIG = "configs/sam2.1/sam2.1_hiera_l.yaml"
+
+
+def check_segmentation_identity(results_path, results):
+    """Existing PNGs may only be resumed with the same prompts, model and code."""
+    root = Path(__file__).resolve().parents[1]
+    sources = [Path(__file__).resolve(), root / 'utils/reasonvos_runtime.py']
+    sources.extend(sorted((root / 'sam2/sam2').rglob('*.py')))
+    identity = {'schema': 'sam2-mask-cache-v1', 'grounding_sha256': file_sha256(results_path),
+                'checkpoint_sha256': file_sha256(root / SAM2_CHECKPOINT),
+                'config_sha256': file_sha256(root / 'sam2/sam2' / (SAM2_CONFIG)),
+                'sources': {str(p.relative_to(root)): file_sha256(p) for p in sources},
+                'mask_threshold': 0.0, 'propagation': 'forward_and_reverse',
+                'precision': 'bfloat16_with_ampere_tf32'}
+    legacy = []
+    for entry in results:
+        existing = next(Path(entry['save_path']).glob('*.png'), None)
+        if existing is not None:
+            legacy.append(existing)
+    ensure_identity(Path(results_path).parent / 'sam2_identity.json', identity, legacy)
 
 def main(args):
     print("Inference only supports for batch size = 1")
     print(args)
 
     all_results = json.load(open(args.all_results_path)) # list
+    if args.num_gpus < 1:
+        raise ValueError('num_gpus must be positive')
+    check_segmentation_identity(args.all_results_path, all_results)
 
     # create subprocess
     thread_num = args.num_gpus
@@ -47,8 +73,15 @@ def main(args):
 
     for p in processes:
         p.join()
+        if p.exitcode != 0:
+            raise RuntimeError(f'SAM2 worker exited with code {p.exitcode}')
 
 def save_results(all_boxes, all_points, save_path, frames, img_folder, video_name, save_path_prefix, descriptions, split_frames_idx, exp_id, key_frame_idx, video_predictor):
+    if all((Path(save_path) / (name + '.png')).is_file()
+           and (Path(save_path) / (name + '.png')).stat().st_size > 0 for name in frames):
+        return
+    if len(all_boxes) != len(all_points):
+        raise ValueError('SAM2 box/point count mismatch')
     if not all_boxes:
         os.makedirs(save_path, exist_ok=True)
         for frame_name in frames:
@@ -115,8 +148,8 @@ def sub_processor(lock, pid, args, video_list):
         )
     torch.cuda.set_device(pid)
 
-    sam2_checkpoint = "sam2/checkpoints/sam2.1_hiera_large.pt"
-    model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
+    sam2_checkpoint = SAM2_CHECKPOINT
+    model_cfg = SAM2_CONFIG
     video_predictor = build_sam2_video_predictor(model_cfg, sam2_checkpoint)
 
     for stored_data in video_list:

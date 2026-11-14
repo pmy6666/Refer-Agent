@@ -16,12 +16,17 @@ import numpy as np
 import pandas as pd
 from metrics import db_eval_iou, db_eval_boundary
 import multiprocessing as mp
+from queue import Empty
+from utils.reasonvos_runtime import atomic_json
 
 NUM_WOEKERS = 32
 
-def eval_queue(q, rank, out_dict, mask_path, pred_path, meta_exp):
-    while not q.empty():
-        vid_key, vid_name, exp_id = q.get()
+def eval_queue(q, rank, out_dict, mask_path, pred_path, meta_exp, allow_missing_masks=False):
+    while True:
+        try:
+            vid_key, vid_name, exp_id = q.get(timeout=2)
+        except Empty:
+            break
         exp_name = "{}_{}".format(vid_key, exp_id)
 
         mask_path_vid = os.path.join(mask_path, vid_key)
@@ -46,8 +51,13 @@ def eval_queue(q, rank, out_dict, mask_path, pred_path, meta_exp):
         for frame_idx, frame_name in enumerate(gt_mask_list):
             gt_masks[frame_idx] = cv2.imread(os.path.join(mask_path_vid, frame_name), cv2.IMREAD_GRAYSCALE)
             if os.path.exists(os.path.join(pred_path_vid_exp, frame_name)):
-                pred_masks[frame_idx] = cv2.imread(os.path.join(pred_path_vid_exp, frame_name), cv2.IMREAD_GRAYSCALE)
+                prediction = cv2.imread(os.path.join(pred_path_vid_exp, frame_name), cv2.IMREAD_GRAYSCALE)
+                if prediction is None or prediction.shape != (h, w):
+                    raise ValueError(f'Unreadable or wrong-sized prediction: {pred_path_vid_exp}/{frame_name}')
+                pred_masks[frame_idx] = prediction
             else:
+                if not allow_missing_masks:
+                    raise FileNotFoundError(f'Missing prediction: {pred_path_vid_exp}/{frame_name}')
                 pred_masks[frame_idx] = np.zeros((h, w), dtype=np.uint8)
 
         j = db_eval_iou(gt_masks, pred_masks).mean()
@@ -62,7 +72,12 @@ if __name__ == '__main__':
     parser.add_argument("--pred_path", type=str)
     parser.add_argument("--save_name", type=str, default="reason_vos.json")
     parser.add_argument("--save_csv_name", type=str, default="reason_vos.csv")
+    parser.add_argument('--num_workers', type=int, default=4)
+    parser.add_argument('--allow_missing_masks', action='store_true',
+                        help='Diagnostic only: score missing frames as zero, not a complete reproduction')
     args = parser.parse_args()
+    if args.num_workers < 1:
+        parser.error('num_workers must be positive')
 
     args.save_name = os.path.join(args.pred_path, '..', args.save_name)
     args.save_csv_name = os.path.join(args.pred_path, '..', args.save_csv_name)
@@ -98,13 +113,28 @@ if __name__ == '__main__':
 
     start_time = time.time()
     processes = []
-    for rank in range(NUM_WOEKERS):
-        p = mp.Process(target=eval_queue, args=(queue, rank, output_dict, args.mask_path, args.pred_path, meta_exp))
+    for rank in range(args.num_workers):
+        p = mp.Process(target=eval_queue, args=(queue, rank, output_dict, args.mask_path, args.pred_path, meta_exp,
+                                              args.allow_missing_masks))
         p.start()
         processes.append(p)
 
     for p in processes:
         p.join()
+        if p.exitcode != 0:
+            raise RuntimeError(f'Evaluation worker exited with code {p.exitcode}')
+
+    expected = sum(len(v['expressions']) for v in meta_exp.values())
+    if len(output_dict) != expected:
+        raise RuntimeError(f'Evaluation coverage {len(output_dict)}/{expected}; refusing partial mean')
+
+    raw_scores = np.asarray(list(output_dict.values()), dtype=np.float64)
+    atomic_json({'expressions': expected,
+                 'evaluation_policy': 'diagnostic_missing_as_zero' if args.allow_missing_masks else 'complete_coverage',
+                 'J': float(100 * raw_scores[:, 0].mean()),
+                 'F': float(100 * raw_scores[:, 1].mean()),
+                 'J&F': float(100 * raw_scores.mean())},
+                os.path.join(args.pred_path, '..', 'summary.json'))
 
     json.dump(dict(output_dict), open(args.save_name, 'w'), indent=4)
 

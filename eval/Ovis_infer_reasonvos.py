@@ -30,6 +30,10 @@ warnings.filterwarnings("ignore")
 
 from utils.concat_frames_reasonvos import select_top_images, stitch_images, simple_concat_frames
 from utils.preprocess_reasonvos import ImageScorer
+from utils.reasonvos_runtime import (OVIS_PATH, DATA_ROOT, META_PATH, RUN_ROOT, QA_PATH, SCORES_PATH,
+    atomic_json, normalize_qa, ensure_identity, inference_identity, file_sha256)
+from utils.reasonvos_reflection import MODEL_TRACE, parse_answer_response, record_model_response
+from utils.reasonvos_pipeline import infer_expression
 
 # colormap
 color_list = utils.colormap()
@@ -48,14 +52,18 @@ transform = T.Compose([
     T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
-OUTPUT = "path/to/output"
-OVIS_CHECKPOINT = "path/to/AIDC-AI/Ovis2.5-9B"
+OUTPUT = str(RUN_ROOT / 'predictions')
+OVIS_CHECKPOINT = OVIS_PATH
 
 def main(args):
     print("Inference only supports for batch size = 1")
     print(args)
+    if args.max_query_num < 1 or args.max_reflections < 0:
+        raise ValueError('Invalid retry/reflection budget')
+    ensure_identity(RUN_ROOT / 'inference_identity.json', inference_identity(args),
+                    [RUN_ROOT / 'predictions/Annotations'])
 
-    seed = 42 + utils.get_rank()
+    seed = args.seed + utils.get_rank()
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -66,9 +74,9 @@ def main(args):
     os.makedirs(output_dir, exist_ok=True)
 
     # load data
-    root = 'path/to/ReasonVOS'
+    root = str(DATA_ROOT)
     img_folder = os.path.join(root, 'JPEGImages')
-    meta_file = os.path.join(root, "meta_expressions.json")
+    meta_file = str(META_PATH)
     with open(meta_file, "r") as f:
         data = json.load(f)["videos"]
 
@@ -76,8 +84,8 @@ def main(args):
 
     random.shuffle(video_list)
 
-    all_query_qa = json.load(open('output_query_qa/reasonvos_query_qa.json', 'r'))
-    all_CLIP_query_scores = json.load(open('output_concat/reasonvos/CLIP/video_scores_reasonvos.json', 'r'))
+    all_query_qa = json.load(open(QA_PATH, 'r'))
+    all_CLIP_query_scores = json.load(open(SCORES_PATH, 'r'))
 
     # create subprocess
     thread_num = args.num_gpus
@@ -105,12 +113,15 @@ def main(args):
 
     for p in processes:
         p.join()
+        if p.exitcode != 0:
+            raise RuntimeError(f'Inference worker exited with code {p.exitcode}')
 
     result_dict = dict(result_dict)
     all_results = []
     for pid, cur_results in result_dict.items():
         all_results.extend(cur_results)
-    json.dump(all_results, open(os.path.join(output_dir, 'all_results.json'), 'w'), indent=2)
+    all_results.sort(key=lambda item: (item['video_name'], str(item['exp_id'])))
+    atomic_json(all_results, os.path.join(output_dir, 'all_results.json'))
         
 
 # Process video and extract key frames
@@ -130,7 +141,7 @@ def extract_key_frames(video_len, num_frames=10):
 
 score_frame_prompt = """
 # Input:
-You are given a query and an image that contains frames 1 to 10 of a video. Each frame is labeled with a digit on the top left corner as its frame_id (e.g., '1', '2', '3') indicating its temporal position. The frame_id is very important for subsequent analysis.
+You are given a query and an image that contains frames 1 to {num_frames} of a video. Each frame is labeled with a digit on the top left corner as its frame_id (e.g., '1', '2', '3') indicating its temporal position. The frame_id is very important for subsequent analysis.
 'query': {query}
 'attention_information'(optional): {attention_info}
 
@@ -157,8 +168,8 @@ You are given a query and an image that contains frames 1 to 10 of a video. Each
 You MUST output ONLY a valid JSON object with the exact structure:
 {{"scores": [number1, number2, ...]}}
 """
-def score_frame_with_vlm(frames, query, attention_info, vl_model, pid):
-    question = score_frame_prompt.format(query=query, attention_info=attention_info)
+def score_frame_with_vlm(frames, query, attention_info, vl_model, pid, num_frames=10):
+    question = score_frame_prompt.format(query=query, attention_info=attention_info, num_frames=num_frames)
 
     messages = [
         {
@@ -195,6 +206,7 @@ def score_frame_with_vlm(frames, query, attention_info, vl_model, pid):
         )
 
     response = vl_model.text_tokenizer.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=True)
+    record_model_response('score_frame_with_vlm', question, response)
     try:
         # Find the JSON part (after any thinking steps)
         response = response.strip()
@@ -275,6 +287,7 @@ def generate_descriptions_with_vlm(frame, query, key_frame_id, num_frame, vl_mod
         )
 
     response = vl_model.text_tokenizer.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=True)
+    record_model_response('generate_descriptions_with_vlm', question, response)
     # Extract JSON from the response (assuming the model outputs valid JSON)
     try:
         # Find the JSON part (after any thinking steps)
@@ -292,7 +305,8 @@ def generate_descriptions_with_vlm(frame, query, key_frame_id, num_frame, vl_mod
         # Fallback if JSON parsing fails
         descriptions = []
 
-    descriptions = [description.replace(' - ', '-') for description in descriptions]
+    descriptions = [description.replace(' - ', '-').strip() for description in descriptions
+                    if isinstance(description, str) and description.strip()]
     return descriptions
 
 generate_descriptions_prompt_origin = """
@@ -370,6 +384,9 @@ def generate_descriptions_with_vlm_cot(frame, query, key_frame_id, update_descri
         )
 
     response = vl_model.text_tokenizer.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=True)
+    # Save all feedback actually supplied to the model, not an undefined local.
+    prompt = '\n'.join(item['text'] for item in messages[-1]['content'] if item['type'] == 'text')
+    record_model_response('generate_descriptions_with_vlm_cot', prompt, response)
     # Extract JSON from the response (assuming the model outputs valid JSON)
     try:
         # Find the JSON part (after any thinking steps)
@@ -387,7 +404,8 @@ def generate_descriptions_with_vlm_cot(frame, query, key_frame_id, update_descri
         # Fallback if JSON parsing fails
         descriptions = []
 
-    descriptions = [description.replace('-', '') for description in descriptions]
+    descriptions = [description.replace(' - ', '-').strip() for description in descriptions
+                    if isinstance(description, str) and description.strip()]
     return descriptions
 
 grounding_prompt = """
@@ -444,6 +462,7 @@ def grounding_with_vlm(frame, query, description, vl_model):
         )
 
     response = vl_model.text_tokenizer.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=True)
+    record_model_response('grounding_with_vlm', question, response)
     response = response.strip().split('</think>')[-1]
     response = response.replace('<bbox>', '<box>').replace('</bbox>', '</box>')
 
@@ -556,6 +575,7 @@ def refine_grounding_with_vlm(frame, query, description, vl_model):
         )
 
     response = vl_model.text_tokenizer.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=True)
+    record_model_response('refine_grounding_with_vlm', question, response)
     response = response.strip().split('</think>')[-1]
     response = response.replace('<points>', '<point>').replace('</points>', '</point>')
     # response = response.replace('<bbox>', '<box>').replace('</bbox>', '</box>')
@@ -634,14 +654,14 @@ def remove_duplicate_boxes(boxes):
 
 image_qa_prompt = """
 # Task Description
-You are given a query and an image that contains frames 1 to 5 of a video. Each frame is labeled with a digit **on the top left corner** as its frame_id (e.g., '1', '2', '3') indicating its temporal position. The frame_id is **very important** for subsequent analysis.
+You are given a query and an image that contains frames 1 to {num_frames} of a video. Each frame is labeled with a digit **on the top left corner** as its frame_id (e.g., '1', '2', '3') indicating its temporal position. The frame_id is **very important** for subsequent analysis.
 - Keyframe ID (corresponds to the number in the upper left corner of a certain frame): {key_frame_id}
 - Query: {query}
 - Questions: {questions}
 
 # Analysis Instructions
 1. Analyze the frames as a continuous video sequence to understand motion, temporal behavior, and target dynamics.
-2. For each question in the list, select the optimal answer option based on visual evidence from the video content.
+2. Answer EVERY question exactly once in input order, with exactly one option letter. Do not omit uncertain questions. Select the answer based on visual evidence from the video content.
 3. Provide brief, factual reasoning for each answer choice, focusing specifically on what is observed in the video frames.
 
 # Key Frame Selection Guidance
@@ -668,8 +688,8 @@ You MUST output a valid JSON dictionary with exactly two keys:
     "guidance": "Select frames where the red car is fully in frame and not severely obscured by other vehicles. Avoid frames where the car is partially behind trucks or in shadowed areas."
 }}
 """
-def image_qa_with_vlm(frames, query, questions, key_frame_id, vl_model):
-    question = image_qa_prompt.format(query=query, questions=questions, key_frame_id=key_frame_id)
+def image_qa_with_vlm(frames, query, questions, key_frame_id, vl_model, num_frames=5):
+    question = image_qa_prompt.format(query=query, questions=questions, key_frame_id=key_frame_id, num_frames=num_frames)
 
     messages = [
         {
@@ -706,6 +726,7 @@ def image_qa_with_vlm(frames, query, questions, key_frame_id, vl_model):
         )
 
     response = vl_model.text_tokenizer.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=True)
+    record_model_response('image_qa_with_vlm', question, response)
     # Extract JSON from the response (assuming the model outputs valid JSON)
     try:
         # Find the JSON part (after any thinking steps)
@@ -723,81 +744,7 @@ def image_qa_with_vlm(frames, query, questions, key_frame_id, vl_model):
     return answer_data
 
 def extract_qa_answer_output_for_frame(response_text: str) -> Optional[Dict[str, Any]]:
-    try:
-        def normalize_answer_data(parsed_data):
-            if isinstance(parsed_data, dict) and 'answers' in parsed_data:
-                for item in parsed_data['answers']:
-                    if 'answer' in item:
-                        if isinstance(item['answer'], str):
-                            item['answer'] = [item['answer']]
-                        elif not isinstance(item['answer'], list):
-                            item['answer'] = []
-            return parsed_data
-
-        try:
-            parsed_data = json.loads(response_text)
-            if isinstance(parsed_data, dict) and 'answers' in parsed_data and 'guidance' in parsed_data:
-                answers = parsed_data['answers']
-                if (isinstance(answers, list) and
-                        all(isinstance(item, dict) and 'answer' in item and 'reason' in item for item in answers)):
-                    parsed_data = normalize_answer_data(parsed_data)
-                    valid_answers = all(
-                        isinstance(item['answer'], list) and
-                        isinstance(item['reason'], str)
-                        for item in parsed_data['answers']
-                    )
-                    if valid_answers:
-                        return parsed_data
-        except json.JSONDecodeError:
-            pass
-
-        json_pattern = r'```json\s*(.*?)\s*```'
-        json_matches = re.findall(json_pattern, response_text, re.DOTALL)
-
-        for match in json_matches:
-            try:
-                parsed_data = json.loads(match)
-                if isinstance(parsed_data, dict) and 'answers' in parsed_data and 'guidance' in parsed_data:
-                    answers = parsed_data['answers']
-                    if (isinstance(answers, list) and
-                            all(isinstance(item, dict) and 'answer' in item and 'reason' in item for item in answers)):
-                        parsed_data = normalize_answer_data(parsed_data)
-                        valid_answers = all(
-                            isinstance(item['answer'], list) and
-                            isinstance(item['reason'], str)
-                            for item in parsed_data['answers']
-                        )
-                        if valid_answers:
-                            return parsed_data
-            except json.JSONDecodeError:
-                continue
-
-        json_object_pattern = r'\{[\s\S]*?\}'
-        json_objects = re.findall(json_object_pattern, response_text)
-
-        for obj_text in json_objects:
-            try:
-                parsed_data = json.loads(obj_text)
-                if isinstance(parsed_data, dict) and 'answers' in parsed_data and 'guidance' in parsed_data:
-                    answers = parsed_data['answers']
-                    if (isinstance(answers, list) and
-                            all(isinstance(item, dict) and 'answer' in item and 'reason' in item for item in answers)):
-                        parsed_data = normalize_answer_data(parsed_data)
-                        valid_answers = all(
-                            isinstance(item['answer'], list) and
-                            isinstance(item['reason'], str)
-                            for item in parsed_data['answers']
-                        )
-                        if valid_answers:
-                            return parsed_data
-            except json.JSONDecodeError:
-                continue
-
-        return None
-
-    except Exception as e:
-        print(f"Error extracting QA answer output: {e}")
-        return None
+    return parse_answer_response(response_text, require_guidance=True)
 
 answer_qa_prompt = """
 # Task:
@@ -811,7 +758,8 @@ Image with red bounding box; Questions dict '{questions}'; Additional informatio
 2. For each question, select the optimal options that accurately describe the visual attributes observed within the bounded area. Provide specific and short factual reasons grounded in the actual image content.
 4. Base all responses strictly on concrete visual evidence from the target object within the red box. If the question involves comparisons, such as 'bigger' or 'fastest', judge solely based on the current image and **do not refer to information outside the image**.
 5. If the additional information is not empty, you may use it to assist in making selections, as the additional information may refer to relevant details or premises of the question.
-6. If some question cannot be answered based on this image, select 'A' and provide the reason.
+6. Never assume the expected answer. If the claimed attribute cannot be established from the image, choose the option that rejects the unsupported claim and explain the missing visual evidence.
+7. Answer EVERY question exactly once, in input order; use exactly one option letter per question. Do not omit uncertain questions.
 
 # Output format example: 
 {{"answers": [{{"answer": "A", "reason": "1 sentence for brief visual explanation. Focus on the target itself. Do not mention questions or options!"}}, ...]}}
@@ -861,6 +809,7 @@ def answer_qa_with_vlm(frame, questions, addition_info, vl_model):
         )
 
     response = vl_model.text_tokenizer.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=True)
+    record_model_response('answer_qa_with_vlm', question, response)
 
     # Extract JSON from the response
     try:
@@ -916,81 +865,7 @@ def extract_qa_generation_output(data_string: str) -> Optional[List[Dict[str, An
                 return results
 
 def extract_qa_answer_output(response_text: str) -> Optional[Dict[str, Any]]:
-    try:
-        def normalize_answer_data(parsed_data):
-            if isinstance(parsed_data, dict) and 'answers' in parsed_data:
-                for item in parsed_data['answers']:
-                    if 'answer' in item:
-                        if isinstance(item['answer'], str):
-                            item['answer'] = [item['answer']]
-                        elif not isinstance(item['answer'], list):
-                            item['answer'] = []
-            return parsed_data
-
-        try:
-            parsed_data = json.loads(response_text)
-            if isinstance(parsed_data, dict) and 'answers' in parsed_data:
-                answers = parsed_data['answers']
-                if (isinstance(answers, list) and
-                        all(isinstance(item, dict) and 'answer' in item and 'reason' in item for item in answers)):
-                    parsed_data = normalize_answer_data(parsed_data)
-                    valid_answers = all(
-                        isinstance(item['answer'], list) and
-                        isinstance(item['reason'], str)
-                        for item in parsed_data['answers']
-                    )
-                    if valid_answers:
-                        return parsed_data
-        except json.JSONDecodeError:
-            pass
-
-        json_pattern = r'```json\s*(.*?)\s*```'
-        json_matches = re.findall(json_pattern, response_text, re.DOTALL)
-
-        for match in json_matches:
-            try:
-                parsed_data = json.loads(match)
-                if isinstance(parsed_data, dict) and 'answers' in parsed_data:
-                    answers = parsed_data['answers']
-                    if (isinstance(answers, list) and
-                            all(isinstance(item, dict) and 'answer' in item and 'reason' in item for item in answers)):
-                        parsed_data = normalize_answer_data(parsed_data)
-                        valid_answers = all(
-                            isinstance(item['answer'], list) and
-                            isinstance(item['reason'], str)
-                            for item in parsed_data['answers']
-                        )
-                        if valid_answers:
-                            return parsed_data
-            except json.JSONDecodeError:
-                continue
-
-        json_object_pattern = r'\{[\s\S]*?\}'
-        json_objects = re.findall(json_object_pattern, response_text)
-
-        for obj_text in json_objects:
-            try:
-                parsed_data = json.loads(obj_text)
-                if isinstance(parsed_data, dict) and 'answers' in parsed_data:
-                    answers = parsed_data['answers']
-                    if (isinstance(answers, list) and
-                            all(isinstance(item, dict) and 'answer' in item and 'reason' in item for item in answers)):
-                        parsed_data = normalize_answer_data(parsed_data)
-                        valid_answers = all(
-                            isinstance(item['answer'], list) and
-                            isinstance(item['reason'], str)
-                            for item in parsed_data['answers']
-                        )
-                        if valid_answers:
-                            return parsed_data
-            except json.JSONDecodeError:
-                continue
-
-        return None
-
-    except Exception as e:
-        print(f"Error extracting QA answer output: {e}")
-        return None
+    return parse_answer_response(response_text, require_guidance=False)
 
 def convert_qa_for_answer_prompt(qa_data: List[Dict[str, Any]]):
     converted_questions = []
@@ -1140,411 +1015,87 @@ def convert_point(point, orig_height, orig_width):
     return point_original
 
 def sub_processor(lock, pid, args, data, save_path_prefix, img_folder, video_list, result_dict, all_query_qa, all_CLIP_query_scores):
-    text = 'processor %d' % pid
-    with lock:
-        progress = tqdm(
-            total=len(video_list),
-            position=pid,
-            desc=text,
-            ncols=0
-        )
+    torch.manual_seed(args.seed + pid)
+    np.random.seed(args.seed + pid)
+    random.seed(args.seed + pid)
     torch.cuda.set_device(pid)
     device = torch.device(f"cuda:{pid}")
-
     ovis_model = AutoModelForCausalLM.from_pretrained(
-        OVIS_CHECKPOINT,
-        torch_dtype=torch.bfloat16,
-        attn_implementation="flash_attention_2",
-        trust_remote_code=True,
+        OVIS_CHECKPOINT, torch_dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2", trust_remote_code=True,
     ).to(device)
+    ovis_model.eval()
+    atomic_json({'ovis': ovis_model.generation_config.to_dict(),
+                 'llm': ovis_model.llm.generation_config.to_dict()},
+                RUN_ROOT / f'inference_generation_config_{pid}.json')
     scorer = ImageScorer()
-
     all_results = []
-
-    # 1. For each video
+    encountered_new = False
+    with lock:
+        progress = tqdm(total=len(video_list), position=pid, desc=f'processor {pid}', ncols=0)
     for video in video_list:
         torch.cuda.empty_cache()
-        metas = []  # list[dict], length is number of expressions
-
-        expressions = data[video]["expressions"]
-        num_expressions = len(expressions)
-        video_len = len(data[video]["frames"])
-
-        split_frames_list = [data[video]["frames"]]
-
-        for split_frames_idx, frames in enumerate(split_frames_list):
-            # read all the anno meta for assigned expressions only
-            for i in range(num_expressions):
-                meta = {}
-                meta["exp"] = expressions[i]["exp_text"]
-                meta["exp_id"] = str(expressions[i]['exp_id'])
-                meta["frames"] = frames
-                metas.append(meta)
-            meta = metas
-
-            # store images
-            video_name = video
-            video_len = len(frames)
-            os.makedirs(os.path.join(save_path_prefix, video_name), exist_ok=True)
-            imgs = []
-            src_imgs = []
-            bytes_imgs = []
-            for t in range(video_len):
-                frame = frames[t]
-                img_path = os.path.join(img_folder, video_name, frame + ".jpg")
-                src_img = Image.open(img_path).convert('RGB')
-                src_imgs.append(src_img)
-                bytes_imgs.append(np.asarray(src_img))
-
-            # 2. For each expression
-            for i in range(num_expressions):
-                exp = meta[i]["exp"]
-                exp_id = meta[i]["exp_id"]
-
-                save_path = os.path.join(save_path_prefix, video_name, exp_id)
-                # if os.path.exists(save_path):
-                #     continue
-
-                start_frame_idx = 1
-                end_frame_idx = video_len
-                need_update_frame = True
-                last_key_frame_idx = 0
-                last_boxes = []
-                last_points = []
-                all_boxes = []
-                all_descriptions = []
-                attention_info = None
-                try:
-                    for update_frame_round in range(args.max_update_frame_num):
-                        if not need_update_frame:
-                            break
-
-                        all_boxes.clear()
-                        all_descriptions.clear()
-
-                        CLIP_query_scores = all_CLIP_query_scores[video]['CLIP'][exp_id]
-                        CLIP_scores = {}
-                        for frame in frames:
-                            CLIP_scores[frame + '.jpg'] = CLIP_query_scores[frame + '.jpg']
-                        if all_descriptions:
-                            CLIP_descriptions_scores = {}
-                            for frame_name in CLIP_scores:
-                                frame_path = os.path.join(img_folder, video_name, frame_name)
-                                CLIP_descriptions_score = 0
-                                for description in all_descriptions:
-                                    cur_score = scorer.calculate_clip_score(frame_path, description)
-                                    CLIP_descriptions_score += cur_score
-                                CLIP_descriptions_score /= len(all_descriptions)
-                                CLIP_descriptions_scores[frame_name] = CLIP_descriptions_score
-                            CLIP_descriptions_scores = scorer.normalize_scores(CLIP_descriptions_scores)
-
-                            for frame_name in CLIP_scores:
-                                CLIP_scores[frame_name]['weighted_score'] = 0.1 * CLIP_scores[frame_name]['clip'] + 0.2 * CLIP_descriptions_scores[frame_name]
-                        else:
-                            for frame_name in CLIP_scores:
-                                CLIP_scores[frame_name]['weighted_score'] = 0.1 * CLIP_scores[frame_name]['clip']
-                        selected_frames = select_top_images(CLIP_scores, 'weighted_score', start_frame_idx, end_frame_idx)
-                        selected_frames_ids = [frames.index(selected_frame.replace('.jpg', '')) for selected_frame in selected_frames]
-                        selected_frames_PIL = [src_imgs[selected_frame_id] for selected_frame_id in selected_frames_ids]
-                        combined_image = simple_concat_frames(selected_frames_PIL)
-
-                        for query_round in range(args.max_query_num):
-                            Ovis_scores = score_frame_with_vlm([combined_image], exp, attention_info, ovis_model, pid)
-                            if Ovis_scores and len(Ovis_scores) == len(selected_frames):
-                                break
-
-                        if len(Ovis_scores) != len(selected_frames):
-                            Ovis_scores = [0] * len(selected_frames)
-
-                        scored_items = []
-                        for idx, selected_frame in enumerate(selected_frames):
-                            cur_score = 0.0 * CLIP_scores[selected_frame]['weighted_score'] + 0.7 * Ovis_scores[idx]
-                            scored_items.append({
-                                'original_idx': idx,
-                                'score': cur_score
-                            })
-
-                        top_5_by_score = sorted(scored_items, key=lambda x: x['score'], reverse=True)[:5]
-                        top_5_in_order = sorted(top_5_by_score, key=lambda x: x['original_idx'])
-
-                        keep_indices = [item['original_idx'] for item in top_5_in_order]
-
-                        selected_frames = [selected_frames[i] for i in keep_indices]
-                        selected_frames_ids = [selected_frames_ids[i] for i in keep_indices]
-                        selected_frames_PIL = [selected_frames_PIL[i] for i in keep_indices]
-                        combined_image_frame_qa = simple_concat_frames(selected_frames_PIL)
-
-                        max_score = -1.0
-                        key_frame_id = 0
-                        for idx, item in enumerate(top_5_in_order):
-                            if item['score'] > max_score:
-                                max_score = item['score']
-                                key_frame_id = idx
-
-                        original_key_frame_id = key_frame_id
-                        key_frame_idx = selected_frames_ids[key_frame_id]
-
-                        if key_frame_id in [0, 2, 4]:
-                            selected_frame_list = selected_frames_PIL.copy()
-                            combined_image = stitch_images(selected_frame_list, key_frame_id)
-                        elif key_frame_id == 1:
-                            selected_frame_list = selected_frames_PIL.copy()
-                            left_pad_idx = (selected_frames_ids[0] + selected_frames_ids[1] + 1) // 2
-                            right_pad_idx = (selected_frames_ids[1] + selected_frames_ids[2] + 1) // 2
-                            left_pad_frame = Image.open(
-                                os.path.join(img_folder, video_name, frames[left_pad_idx] + '.jpg')).convert('RGB')
-                            right_pad_frame = Image.open(
-                                os.path.join(img_folder, video_name, frames[right_pad_idx] + '.jpg')).convert('RGB')
-                            selected_frame_list.insert(1, left_pad_frame)
-                            selected_frame_list.insert(3, right_pad_frame)
-                            key_frame_id += 1
-                            combined_image = stitch_images(selected_frame_list, key_frame_id)
-                        else:
-                            selected_frame_list = selected_frames_PIL.copy()
-                            left_pad_idx = (selected_frames_ids[2] + selected_frames_ids[3] + 1) // 2
-                            right_pad_idx = (selected_frames_ids[3] + selected_frames_ids[4] + 1) // 2
-                            left_pad_frame = Image.open(
-                                os.path.join(img_folder, video_name, frames[left_pad_idx] + '.jpg')).convert('RGB')
-                            right_pad_frame = Image.open(
-                                os.path.join(img_folder, video_name, frames[right_pad_idx] + '.jpg')).convert('RGB')
-                            selected_frame_list.insert(3, left_pad_frame)
-                            selected_frame_list.insert(5, right_pad_frame)
-                            key_frame_id += 1
-                            combined_image = stitch_images(selected_frame_list, key_frame_id)
-                        
-                        original_key_frame = src_imgs[key_frame_idx]
-                        orig_width, orig_height = original_key_frame.size
-
-                        for query_round_description in range(args.max_query_num):
-                            descriptions = generate_descriptions_with_vlm(combined_image, exp, key_frame_id + 1, len(selected_frame_list), ovis_model, pid)
-                            if descriptions:
-                                break
-                        
-                        all_descriptions = []
-                        grounding_bboxes = []
-                        grounding_points = []
-                        if descriptions:
-                            for description in descriptions:
-                                for query_round_grounding in range(args.max_query_num):
-                                    grounding_bbox = grounding_with_vlm(original_key_frame, exp, description, ovis_model)
-                                    
-                                    if not grounding_bbox:
-                                        continue
-
-                                    converted_box = convert_bbox(grounding_bbox, orig_height, orig_width)
-                                    labeled_key_frame = visualize_box(bytes_imgs[key_frame_idx], converted_box)
-                                    grounding_point = refine_grounding_with_vlm(labeled_key_frame, exp, description, ovis_model)
-
-                                    if grounding_point and grounding_bbox:
-                                        break
-
-                                if grounding_point and grounding_bbox:
-                                    grounding_points.append(grounding_point)
-                                    grounding_bboxes.append(grounding_bbox)
-                                    all_descriptions.append(description)
-
-                        all_boxes = [convert_bbox(bbox, orig_height, orig_width) for bbox in grounding_bboxes]
-                        all_points = [convert_point(point, orig_height, orig_width) for point in grounding_points]
-                        if grounding_bboxes and grounding_points:
-                            last_key_frame_idx = key_frame_idx
-                            last_boxes = [convert_bbox(bbox, orig_height, orig_width) for bbox in grounding_bboxes]
-                            last_points = [convert_point(point, orig_height, orig_width) for point in grounding_points]
-
-                        if update_frame_round + 1 < args.max_update_frame_num:
-                            frame_query_qa = [
-                                {
-                                    "question": f"Does the frame sequence contain targets that match query '{exp}' but are absent in the keyframe?",
-                                    "options": {
-                                        "A": "Yes",
-                                        "B": "No"
-                                    },
-                                    "correct_answer": "B"
-                                }
-                            ]
-                            if all_descriptions:
-                                frame_query_qa.append(
-                                    {
-                                        "question": f"Does any other sampled frame present the target corresponding to the description '{all_descriptions[0]}' more clearly than the current keyframe?",
-                                        "options": {
-                                            "A": "Yes",
-                                            "B": "No"
-                                        },
-                                        "correct_answer": "B"
-                                    }
-                                )
-                                frame_query_qa.append(
-                                    {
-                                        "question": f"Does the target corresponding to the description '{all_descriptions[0]}' suffers from **severe** occlusion, blurring, or overlap with other objects in the keyframe?",
-                                        "options": {
-                                            "A": "Yes",
-                                            "B": "No"
-                                        },
-                                        "correct_answer": "B"
-                                    }
-                                )
-                            # Image QA
-                            # combined_image_for_check_frame = stitch_images(selected_frame_list, key_frame_id)
-                            questions_frame = convert_qa_for_answer_prompt(frame_query_qa)
-                            for query_round in range(args.max_query_num):
-                                results_for_frame_qa = image_qa_with_vlm([combined_image_frame_qa], exp, questions_frame, original_key_frame_id + 1, ovis_model)
-                                if results_for_frame_qa:
-                                    break
-                            answers_for_frame_qa = results_for_frame_qa['answers']
-                            error_fg = 0
-                            for qa_data, answer in zip(frame_query_qa, answers_for_frame_qa):
-                                if qa_data.get('correct_answer', 'B') not in answer.get('answer', ['B']):
-                                    error_fg += 1
-
-                            if error_fg > 0:
-                                with open(os.path.join(save_path_prefix, f'feedback_{pid}_frame.txt'), 'a') as f:
-                                    f.write(f'{video_name}_{exp_id}\n')
-                                need_update_frame = True
-                                attention_info = results_for_frame_qa['guidance']
-                                continue
-                            else:
-                                need_update_frame = False
-
-                    need_update_descriptions = True
-                    update_descriptions_info = []
-                    update_descriptions_cots = []
-                    for update_descriptions_round in range(args.max_update_descriptions_num):
-                        if not need_update_descriptions:
-                            break
-
-                        all_boxes.clear()
-                        all_descriptions.clear()
-
-                        if update_descriptions_round > 0:
-                            for query_round_description in range(args.max_query_num):
-                                if not update_descriptions_cots:
-                                    descriptions = generate_descriptions_with_vlm(combined_image, exp, key_frame_id + 1, len(selected_frame_list), ovis_model, pid)
-                                else:
-                                    descriptions = generate_descriptions_with_vlm_cot(combined_image, exp, key_frame_id + 1, update_descriptions_cots, len(selected_frame_list), ovis_model, pid)
-
-                        grounding_bboxes = []
-                        grounding_points = []
-                        if descriptions:
-                            for description in descriptions:
-                                for query_round_grounding in range(args.max_query_num):
-                                    grounding_bbox = grounding_with_vlm(original_key_frame, exp, description, ovis_model)
-
-                                    if not grounding_bbox:
-                                        continue
-
-                                    converted_box = convert_bbox(grounding_bbox, orig_height, orig_width)
-                                    labeled_key_frame = visualize_box(bytes_imgs[key_frame_idx], converted_box)
-                                    grounding_point = refine_grounding_with_vlm(labeled_key_frame, exp, description, ovis_model)
-
-                                    if grounding_point and grounding_bbox:
-                                        break
-
-                                if grounding_point and grounding_bbox:
-                                    grounding_points.append(grounding_point)
-                                    grounding_bboxes.append(grounding_bbox)
-                                    all_descriptions.append(description)
-
-                        all_boxes = [convert_bbox(bbox, orig_height, orig_width) for bbox in grounding_bboxes]
-                        all_points = [convert_point(point, orig_height, orig_width) for point in grounding_points]
-                        if grounding_bboxes and grounding_points:
-                            last_key_frame_idx = key_frame_idx
-                            last_boxes = [convert_bbox(bbox, orig_height, orig_width) for bbox in grounding_bboxes]
-                            last_points = [convert_point(point, orig_height, orig_width) for point in grounding_points]
-
-                        if update_descriptions_round + 1 < args.max_update_descriptions_num and all_descriptions and all_boxes:
-                            # QA extraction
-                            video_exp = video + '/' + str(exp_id)
-
-                            period_count = exp.count('.') + exp.count('?')
-                            if period_count <= 1:
-                                addition_info = ''
-                            else:
-                                periods = [i for i, char in enumerate(exp) if char == '.']
-                                if len(periods) >= 2:
-                                    addition_info = exp[:periods[-2]].strip()
-                                else:
-                                    first_period_index = exp.find('.')
-
-                                    if first_period_index != -1:
-                                        addition_info = exp[:first_period_index].strip()
-                                    else:
-                                        addition_info = ''
-
-                            query_qa_static = all_query_qa[video_exp].get('static', [])
-                            questions_static = convert_qa_for_answer_prompt(query_qa_static)
-
-                            # query QA(Input: img_with_box, QA) (Output: answer, reason)
-                            update_descriptions_info.clear()
-                            error_cnt = 0
-                            for bbox, description in zip(all_boxes, all_descriptions):
-                                img_with_box = visualize_box(bytes_imgs[key_frame_idx], bbox)
-
-                                for query_round in range(args.max_query_num):
-                                    answers_static = answer_qa_with_vlm(img_with_box, questions_static, addition_info, ovis_model)['answers']
-                                    if answers_static:
-                                        break
-
-                                reasons_for_cur_description = []
-                                error_fg = False
-                                for qa_data, answer in zip(query_qa_static, answers_static):
-                                    if qa_data.get('correct_answer', 'A') not in answer.get('answer', ['A']):
-                                        error_fg = True
-                                    reasons_for_cur_description.append(answer.get('reason', ''))
-
-                                if error_fg:
-                                    error_cnt += 1
-                                reasons_for_cur_description = ' '.join(reasons_for_cur_description)
-                                update_descriptions_info.append({
-                                    'description': description,
-                                    'feedback': reasons_for_cur_description
-                                })
-
-                            if error_cnt > 0:
-                                need_update_descriptions = True
-                                update_descriptions_cots.append(update_descriptions_info)
-                            else:
-                                need_update_descriptions = False
-                        else:
-                            need_update_descriptions = True
-
-                    if not all_boxes:
-                        key_frame_idx = last_key_frame_idx
-                        all_boxes = last_boxes
-                        all_points = last_points
-                    all_results.append({
-                        'all_boxes': all_boxes,
-                        'all_points': all_points,
-                        'save_path': save_path,
-                        'frames': frames,
-                        'img_folder': img_folder,
-                        'video_name': video_name,
-                        'save_path_prefix': save_path_prefix,
-                        'descriptions': descriptions,
-                        'split_frames_idx': split_frames_idx,
-                        'exp_id': exp_id,
-                        'key_frame_idx': key_frame_idx
-                    })
-
-                except torch.cuda.OutOfMemoryError as e:
-                    with open(os.path.join(OUTPUT, f'oom_{pid}.txt'), 'a') as f:
-                        f.write(save_path + '\n')
-                        f.write(str(e) + '\n')
-                        f.write("Traceback:\n")
-                        f.write(traceback.format_exc() + '\n\n')
-                    torch.cuda.empty_cache()
-                    continue
-                except Exception as e:
-                    with open(os.path.join(OUTPUT, f'error_{pid}.txt'), 'a') as f:
-                        f.write(save_path + '\n')
-                        f.write(f"Error type: {type(e).__name__}\n")
-                        f.write(f"Error message: {str(e)}\n")
-                        f.write("Full traceback:\n\n")
-                        f.write(traceback.format_exc() + '\n')
-                    continue
-
+        frames = data[video]['frames']
+        images = [Image.open(os.path.join(img_folder, video, frame + '.jpg')).convert('RGB')
+                  for frame in frames]
+        for expression in data[video]['expressions']:
+            exp_id = str(expression['exp_id'])
+            save_path = os.path.join(save_path_prefix, video, exp_id)
+            checkpoint_path = os.path.join(save_path, 'grounding.json')
+            rng_path = os.path.join(save_path, 'rng.pt')
+            trace_path = os.path.join(save_path, 'trace.json')
+            if os.path.exists(checkpoint_path):
+                if encountered_new:
+                    raise ValueError('Resume results must form a complete prefix of worker input order')
+                stored = json.load(open(checkpoint_path))
+                if stored['frames'] != frames or stored['exp_id'] != exp_id:
+                    raise ValueError(f'Checkpoint input mismatch: {checkpoint_path}')
+                for name, path in [('rng', rng_path), ('trace', trace_path)]:
+                    if file_sha256(path) != stored['artifact_sha256'][name]:
+                        raise ValueError(f'Checkpoint artifact changed: {path}')
+                rng = torch.load(rng_path, map_location='cpu', weights_only=False)
+                random.setstate(rng['python'])
+                np.random.set_state(rng['numpy'])
+                torch.set_rng_state(rng['torch'])
+                torch.cuda.set_rng_state(rng['cuda'], device)
+                all_results.append(stored)
+                continue
+            encountered_new = True
+            trace = {'calls': [], 'selection': [], 'rounds': [], 'model_calls': []}
+            token = MODEL_TRACE.set(trace['model_calls'])
+            try:
+                state = infer_expression(
+                    sys.modules[__name__], ovis_model, scorer, images, frames,
+                    os.path.join(img_folder, video), expression['exp_text'],
+                    all_CLIP_query_scores[video]['CLIP'][exp_id],
+                    normalize_qa(all_query_qa[f'{video}/{exp_id}']['qa_complete']),
+                    args.max_reflections, args.max_query_num, pid, trace)
+                stored = {'all_boxes': state['boxes'], 'all_points': state['points'],
+                          'descriptions': state['descriptions'], 'frames': frames,
+                          'key_frame_idx': state['layout']['key_frame_idx'],
+                          'save_path': save_path, 'img_folder': img_folder, 'video_name': video,
+                          'save_path_prefix': save_path_prefix, 'split_frames_idx': 0,
+                          'exp_id': exp_id, 'reflection': state['reflection']}
+                atomic_json(trace, trace_path)
+                rng = {'python': random.getstate(), 'numpy': np.random.get_state(),
+                       'torch': torch.get_rng_state(), 'cuda': torch.cuda.get_rng_state(device)}
+                torch.save(rng, rng_path + '.tmp')
+                os.replace(rng_path + '.tmp', rng_path)
+                stored['artifact_sha256'] = {'rng': file_sha256(rng_path),
+                                             'trace': file_sha256(trace_path)}
+                atomic_json(stored, checkpoint_path)
+                all_results.append(stored)
+            except Exception:
+                trace['error'] = traceback.format_exc()
+                atomic_json(trace, trace_path)
+                # Fail fast. Skipping a sample would break the resume prefix/random stream.
+                raise
+            finally:
+                MODEL_TRACE.reset(token)
         with lock:
             progress.update(1)
     result_dict[str(pid)] = all_results
-    json.dump(all_results, open(os.path.join(save_path_prefix, f'all_results_{pid}.json'), 'w'), indent=2)
+    atomic_json(all_results, os.path.join(save_path_prefix, f'all_results_{pid}.json'))
     with lock:
         progress.close()
 
@@ -1556,8 +1107,9 @@ if __name__ == '__main__':
                         help='valid or valid_u')
     parser.add_argument("--visualize", action='store_true')
     parser.add_argument("--max_query_num", default=3, type=int)
-    parser.add_argument("--max_update_descriptions_num", "-max_desc", default=2, type=int)
-    parser.add_argument("--max_update_frame_num", "-max_frame", default=2, type=int)
+    parser.add_argument('--seed', default=42, type=int)
+    parser.add_argument('--max_reflections', '--max_turn', default=4, type=int,
+                        help='Shared feedback revision budget after the initial prediction; 0 disables checks')
     parser.add_argument('--num_gpus', '-ng', type=int, required=True,
                         help='number of CUDA gpus to run on. mutually exclusive with \'gpu_ids\'')
     args = parser.parse_args()
