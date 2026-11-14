@@ -1,0 +1,26 @@
+test_cache_rejects_changed_identity_and_unversioned_outputs (test_reasonvos_reproduction.CoverageAndProvenanceTests) ... ok
+test_complete_frames_keeps_ids_and_uses_only_annotation_names (test_reasonvos_reproduction.CoverageAndProvenanceTests) ... ok
+test_evaluator_rejects_missing_mask_and_scores_complete_identical_masks (test_reasonvos_reproduction.CoverageAndProvenanceTests) ... ok
+test_sam2_identity_rejects_changed_grounding (test_reasonvos_reproduction.CoverageAndProvenanceTests) ... ok
+test_all_five_dynamic_focus_anchor_positions (test_reasonvos_reproduction.PipelineTests) ... ok
+test_consistency_threshold_counts_targets (test_reasonvos_reproduction.PipelineTests) ... ok
+test_empty_boxes_exhaust_existence_without_becoming_verified (test_reasonvos_reproduction.PipelineTests) ... ok
+test_existence_feedback_rescores_clip_and_rechecks_corrected_state (test_reasonvos_reproduction.PipelineTests) ... ok
+test_incomplete_answers_exhaust_retries_instead_of_passing (test_reasonvos_reproduction.PipelineTests) ... ok
+test_mixed_empty_boxes_in_revision_continue_existing_reflection (test_reasonvos_reproduction.PipelineTests) ... ok
+test_nonzero_degenerate_box_and_invalid_point_remain_errors (test_reasonvos_reproduction.PipelineTests) ... ok
+test_short_video_uses_actual_score_count (test_reasonvos_reproduction.PipelineTests) ... ok
+test_actual_feedback_description_function_logs_complete_prompt (test_reasonvos_reproduction.ReflectionTests) ... ok
+test_answers_cannot_pass_with_missing_or_extra_or_illegal_choices (test_reasonvos_reproduction.ReflectionTests) ... ok
+test_consistency_revision_rechecks_existence_with_its_own_budget (test_reasonvos_reproduction.ReflectionTests) ... ok
+test_empty_qa_and_disabled_are_never_marked_verified (test_reasonvos_reproduction.ReflectionTests) ... ok
+test_existence_exhaustion_preserves_both_consistency_opportunities (test_reasonvos_reproduction.ReflectionTests) ... ok
+test_final_consistency_pass_does_not_reuse_stale_existence_pass (test_reasonvos_reproduction.ReflectionTests) ... ok
+test_stage_budgets_cannot_exceed_two (test_reasonvos_reproduction.ReflectionTests) ... ok
+test_success_preserves_single_grounding (test_reasonvos_reproduction.ReflectionTests) ... ok
+test_valid_retry_returns_immediately (test_reasonvos_reproduction.ReflectionTests) ... ok
+
+----------------------------------------------------------------------
+Ran 21 tests in 2.895s
+
+OK

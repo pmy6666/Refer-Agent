@@ -17,6 +17,7 @@ from utils.reasonvos_runtime import (
     atomic_json, normalize_qa, ensure_identity, file_sha256,
 )
 from utils.reorder_reasonvos_meta import reorder_metadata, complete_frame_metadata
+from tools.reuse_reasonvos_preprocessing import reuse_preprocessing
 
 
 def run_stage(name, script, arguments, env, directory):
@@ -51,7 +52,8 @@ def pipeline(meta_path, directory, args):
                     raise RuntimeError('Query QA text mismatch')
                 normalize_qa(entry['qa_complete'])  # A missing field must not become an empty list.
         run_stage('03_grounding', 'eval/Ovis_infer_reasonvos.py',
-                  [*common, '--max_reflections', str(args.max_reflections)], env, directory)
+                  [*common, '--max_existence_checks', str(args.max_existence_checks),
+                   '--max_consistency_checks', str(args.max_consistency_checks)], env, directory)
         results_path = directory / 'predictions/Annotations/all_results.json'
         results = json.loads(results_path.read_text())
         actual = {(r['video_name'], str(r['exp_id'])) for r in results}
@@ -61,7 +63,11 @@ def pipeline(meta_path, directory, args):
         atomic_json({'expressions': len(results), 'status_counts': dict(statuses),
                      'empty_qa': sum(not e['qa_complete'] for e in qa.values()),
                      'revision_counts': dict(Counter(str(r['reflection']['revisions']) for r in results)),
-                     'budget_semantics': REFLECTION_BUDGET_SEMANTICS},
+                     'budget_semantics': REFLECTION_BUDGET_SEMANTICS,
+                     'max_existence_checks': args.max_existence_checks,
+                     'max_consistency_checks': args.max_consistency_checks,
+                     'check_usage_counts': dict(Counter(
+                         str(r['reflection']['checks_used']) for r in results))},
                     directory / 'reflection_summary.json')
         run_stage('04_sam2', 'eval/post_processing.py', [
             '-ng', str(args.num_gpus), '--all_results_path', str(results_path)], env, directory)
@@ -105,16 +111,20 @@ def prepare_run(args):
     processed_digest = hashlib.sha256(
         json.dumps(metadata, indent=2, ensure_ascii=False).encode()).hexdigest()
     parameters = {'alpha': .3, 'beta': .7, 'N': 10, 'K': 5,
-                  'max_reflections': args.max_reflections, 'max_query_num': args.max_query_num,
+                  'max_existence_checks': args.max_existence_checks,
+                  'max_consistency_checks': args.max_consistency_checks,
+                  'max_total_checks': args.max_existence_checks + args.max_consistency_checks,
+                  'max_query_num': args.max_query_num,
                   'gpus': args.num_gpus, 'worker_seed_base': args.seed,
                   'reflection_budget_semantics': REFLECTION_BUDGET_SEMANTICS,
                   'consistency_failure': 'inconsistent_targets > 0.3 * predicted_targets',
                   'empty_qa': 'not_checked_empty_qa', 'training_free': True}
     model_manifest = {'ovis_sam2': json.loads((ROOT / '.downloads/manifest.json').read_text()),
                       'clip': json.loads((ROOT / '.downloads/clip_manifest.json').read_text())}
-    manifest = {'schema': 'reasonvos-paperfix-v2',
+    manifest = {'schema': 'reasonvos-independent-checks-v1',
                 'base_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                 'data_root': str(DATA_ROOT.resolve()), 'run_root': str(directory),
+                'preprocessing_cache': str(args.preprocessing_cache.resolve()) if args.preprocessing_cache else None,
                 'meta_sha256': file_sha256(original), 'processed_meta_sha256': processed_digest,
                 'source_sha256': {p: file_sha256(ROOT / p) for p in SOURCE_FILES},
                 'model_manifest_sha256': {p: file_sha256(ROOT / '.downloads' / p)
@@ -140,14 +150,18 @@ def prepare_run(args):
     if not (directory / 'environment.txt').exists():
         with (directory / 'environment.txt').open('w') as log:
             subprocess.run([sys.executable, '-m', 'pip', 'freeze'], stdout=log, check=True)
+    if args.preprocessing_cache:
+        reuse_preprocessing(args.preprocessing_cache, directory)
     return processed, smoke_meta
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run_dir', type=Path, default=RUN_ROOT)
-    parser.add_argument('--max_reflections', '--max_turn', type=int, default=4,
-                        help='Feedback revisions after the initial prediction; 0 disables reflection')
+    parser.add_argument('--preprocessing-cache', type=Path,
+                        help='Audited CLIP/QA inputs from a matching historical run; never imports predictions')
+    parser.add_argument('--max_existence_checks', type=int, default=2, choices=(0, 1, 2))
+    parser.add_argument('--max_consistency_checks', type=int, default=2, choices=(0, 1, 2))
     parser.add_argument('--max_query_num', type=int, default=3)
     parser.add_argument('--num_gpus', '-ng', type=int, default=1)
     parser.add_argument('--seed', type=int, default=42)
@@ -156,8 +170,8 @@ def parse_args():
     mode.add_argument('--prepare-only', action='store_true', help='CPU metadata and manifest checks only')
     mode.add_argument('--smoke-only', action='store_true', help='Run one expression end to end')
     args = parser.parse_args()
-    if args.max_reflections < 0 or min(args.max_query_num, args.num_gpus, args.eval_workers) < 1:
-        parser.error('Budgets/workers must be positive; max_reflections may be zero')
+    if min(args.max_existence_checks, args.max_consistency_checks) < 0 or min(args.max_query_num, args.num_gpus, args.eval_workers) < 1:
+        parser.error('Budgets/workers must be positive; stage budgets may be zero')
     return args
 
 

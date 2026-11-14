@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -75,6 +76,25 @@ def slurm_status(run, submission, logs):
                                         capture_output=True, text=True, timeout=5, check=True).stdout
                 matched = any(value.startswith(str(run) + '/') for value in
                               re.findall(r'(?:StdOut|StdErr|WorkDir)=(\S+)', detail))
+                if not matched:
+                    # Continuations use the shared repository log directory and
+                    # get new job IDs. Match their explicit run argument too.
+                    command = re.search(r'\bCommand=(.*?)\s+WorkDir=', detail)
+                    working = re.search(r'\bWorkDir=(\S+)', detail)
+                    if command and working:
+                        argv = shlex.split(command.group(1))
+                        for index, argument in enumerate(argv):
+                            value = None
+                            if argument == '--run_dir' and index + 1 < len(argv):
+                                value = argv[index + 1]
+                            elif argument.startswith('--run_dir='):
+                                value = argument.split('=', 1)[1]
+                            if value is not None:
+                                directory = Path(value)
+                                if not directory.is_absolute():
+                                    directory = Path(working.group(1)) / directory
+                                matched = directory.resolve() == run.resolve()
+                                break
             except (OSError, subprocess.SubprocessError):
                 pass
         if matched:
@@ -185,6 +205,8 @@ def collect_progress(run, log_count=3):
             'scope': manifest.get('scope', 'full_run'),
             'source_total_expressions': manifest.get('source_total_expressions'),
             'max_reflections': manifest.get('parameters', {}).get('max_reflections', submission.get('max_reflections')),
+            'stage_check_budgets': {k: manifest.get('parameters', {}).get('max_' + k + '_checks')
+                                    for k in ('existence', 'consistency')},
             'status': status, 'scheduler': scheduler, 'videos': len(meta), 'expressions': expected,
             'stages': {'clip': {'done': clip_done, 'total': expected},
                        'qa': {'done': qa_done, 'total': expected},
@@ -221,7 +243,7 @@ def render(report):
     subset = report.get('scope') == 'completed_subset'
     score_label = '子集' if subset else '全量'
     lines = [f"查询时间：{report['checked_at']}（北京时间）", f"运行目录：{report['run_dir']}",
-             f"反思修正预算（max_reflections）：{report['max_reflections'] if report['max_reflections'] is not None else '未记录'}；数据：{report['videos']}视频 / {report['expressions']}条表达式",
+             f"检查轮数上限：{report.get('stage_check_budgets')}；旧版共享修正预算：{report['max_reflections']}；数据：{report['videos']}视频 / {report['expressions']}条表达式",
              f"文件状态：{status.get('state', '尚未生成')}；阶段：{STAGES.get(status.get('stage'), status.get('stage', '尚未生成'))}"]
     if subset:
         lines.append(f"评测范围：已完成样本子集 {report['expressions']}/{report.get('source_total_expressions')}，不能作为全量成绩")

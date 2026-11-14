@@ -1,0 +1,29 @@
+{
+  "expressions": 458,
+  "empty_qa": 22,
+  "question_count_distribution": {
+    "1": 168,
+    "0": 22,
+    "3": 101,
+    "2": 167
+  },
+  "by_query_type": {
+    "3": {
+      "expressions": 425,
+      "empty": 20,
+      "questions": 741
+    },
+    "1": {
+      "expressions": 28,
+      "empty": 1,
+      "questions": 58
+    },
+    "2": {
+      "expressions": 5,
+      "empty": 1,
+      "questions": 6
+    }
+  },
+  "qa_sha256": "59dc47bd02cef079ebdef7a187d56ba3297f6ed58cde329b44d9d6fe8d0551a7",
+  "interpretation": "Empty QA is recorded as not_checked_empty_qa in inference, never a verified consistency pass. Question counts do not establish semantic validity."
+}

@@ -53,52 +53,62 @@ class ReflectionTests(unittest.TestCase):
         self.assertTrue(state['reflection']['verified'])
         self.assertEqual(self.ground.call_count, 1)
 
-    def test_failed_revision_returns_to_both_verifiers_and_selection(self):
-        callbacks = self.callbacks(
-            [{'status': 'passed'}, {'status': 'failed', 'feedback': 'occluded'}, {'status': 'passed'}],
+    def test_consistency_revision_rechecks_existence_with_its_own_budget(self):
+        callbacks = self.callbacks([{'status': 'passed'}] * 2,
             [{'status': 'failed', 'feedback': 'wrong target'}, {'status': 'passed'}])
         trace = []
         state = run_reflection(*callbacks, trace=trace)
         self.assertTrue(state['reflection']['verified'])
-        self.assertEqual([e['action'] for e in trace], ['select', 'describe', 'select'])
+        self.assertEqual(state['reflection']['checks_used'], {'existence': 2, 'consistency': 2})
+        self.assertEqual([e['action'] for e in trace], ['select', 'describe'])
+        self.assertEqual(self.select.call_count, 1)
+        self.assertEqual(self.describe.call_args.args[1][-1]['feedback'], 'wrong target')
+
+    def test_existence_exhaustion_preserves_both_consistency_opportunities(self):
+        callbacks = self.callbacks([{'status': 'failed', 'feedback': 'occluded'}] * 2,
+                                  [{'status': 'failed', 'feedback': 'wrong'}] * 2)
+        trace = []
+        state = run_reflection(*callbacks, trace=trace)
+        self.assertEqual(callbacks[3].call_count, 2)
+        self.assertEqual(callbacks[4].call_count, 2)
         self.assertEqual(self.select.call_count, 2)
-        self.assertEqual(self.select.call_args.args, ('occluded', ['target']))
-        self.assertEqual(self.describe.call_args.args[1][-1]['feedback'], 'occluded')
+        self.assertEqual(self.ground.call_count, 3)
+        self.assertEqual([e['action'] for e in trace], ['select', 'select', 'describe'])
+        self.assertEqual(state['reflection']['checks_used'], {'existence': 2, 'consistency': 2})
+        self.assertEqual(state['reflection']['status'], 'budget_exhausted')
+        self.assertEqual(state['reflection']['existence'], 'not_rechecked_budget_exhausted')
+        self.assertFalse(state['reflection']['existence_checked_on_final_state'])
+        self.assertFalse(state['reflection']['verified'])
+        self.assertEqual(state['boxes'], trace[-1]['boxes'])
 
-    def test_final_budgeted_prediction_is_checked(self):
-        for budget in (4, 6):
-            callbacks = self.callbacks([{'status': 'passed'}] * (budget + 1),
-                                       [{'status': 'failed', 'feedback': 'wrong'}] * (budget + 1))
-            state = run_reflection(*callbacks, max_reflections=budget)
-            self.assertEqual(callbacks[4].call_count, budget + 1)
-            self.assertEqual(state['reflection']['status'], 'budget_exhausted')
-            self.assertFalse(state['reflection']['verified'])
+    def test_final_consistency_pass_does_not_reuse_stale_existence_pass(self):
+        callbacks = self.callbacks([{'status': 'passed'}],
+                                  [{'status': 'failed', 'feedback': 'wrong'}, {'status': 'passed'}])
+        state = run_reflection(*callbacks, max_existence_checks=1)
+        self.assertEqual(callbacks[3].call_count, 1)
+        self.assertEqual(callbacks[4].call_count, 2)
+        self.assertEqual(state['reflection']['consistency'], 'passed')
+        self.assertFalse(state['reflection']['verified'])
+        self.assertEqual(state['reflection']['existence'], 'not_rechecked_budget_exhausted')
 
-    def test_default_four_revisions_are_shared(self):
-        for failure in ('existence', 'consistency'):
-            callbacks = self.callbacks(
-                [{'status': 'failed' if failure == 'existence' else 'passed',
-                  'feedback': 'retry'}] * 5,
-                [{'status': 'failed', 'feedback': 'retry'}] * 5)
-            state = run_reflection(*callbacks)
-            self.assertEqual(state['reflection']['max_reflections'], 4)
-            self.assertEqual(state['reflection']['revisions'], 4)
-            self.assertEqual(self.select.call_count, 5 if failure == 'existence' else 1)
-            self.assertEqual(self.describe.call_count, 5)
-            self.assertEqual(self.ground.call_count, 5)
-            self.assertEqual(callbacks[3].call_count, 5)
-            self.assertEqual(callbacks[4].call_count, 0 if failure == 'existence' else 5)
+    def test_stage_budgets_cannot_exceed_two(self):
+        for value in (3, -1, True):
+            with self.assertRaises(ValueError):
+                run_reflection(*self.callbacks([], []), max_existence_checks=value)
+            with self.assertRaises(ValueError):
+                run_reflection(*self.callbacks([], []), max_consistency_checks=value)
 
     def test_empty_qa_and_disabled_are_never_marked_verified(self):
-        for budget, result, expected in [(4, 'not_checked_empty_qa', 'not_checked_empty_qa'),
-                                         (0, 'passed', 'disabled')]:
-            callbacks = self.callbacks([{'status': 'passed'}], [{'status': result}])
-            state = run_reflection(*callbacks, max_reflections=budget)
-            self.assertEqual(state['reflection']['status'], expected)
-            self.assertFalse(state['reflection']['verified'])
-            if budget == 0:
-                callbacks[3].assert_not_called()
-                callbacks[4].assert_not_called()
+        callbacks = self.callbacks([{'status': 'passed'}], [{'status': 'not_checked_empty_qa'}])
+        state = run_reflection(*callbacks)
+        self.assertEqual(state['reflection']['status'], 'not_checked_empty_qa')
+        self.assertEqual(state['reflection']['checks_used']['consistency'], 0)
+        self.assertFalse(state['reflection']['verified'])
+        callbacks = self.callbacks([], [])
+        state = run_reflection(*callbacks, max_existence_checks=0, max_consistency_checks=0)
+        self.assertEqual(state['reflection']['status'], 'disabled')
+        callbacks[3].assert_not_called()
+        callbacks[4].assert_not_called()
 
     def test_answers_cannot_pass_with_missing_or_extra_or_illegal_choices(self):
         questions = [{'options': {'A': 'yes', 'B': 'no'}, 'correct_answer': 'A'}] * 2
@@ -208,7 +218,7 @@ class PipelineTests(unittest.TestCase):
         for bad, expected in [(1, True), (2, False)]:
             self.upstream.answer_qa_with_vlm.side_effect = [
                 {'answers':[{'answer':['B' if i < bad else 'A'], 'reason':'seen'}]} for i in range(20)]
-            state, trace = self.infer(max_reflections=1)
+            state, trace = self.infer(max_existence_checks=1, max_consistency_checks=1)
             self.assertEqual(trace['rounds'][0]['consistency']['status'] == 'passed', expected)
             self.assertEqual(trace['rounds'][0]['consistency']['target_count'], 4)
 
@@ -229,27 +239,28 @@ class PipelineTests(unittest.TestCase):
         self.upstream.grounding_with_vlm.side_effect = [
             valid, [0., 0., 0., 0.], None, [0., 0., 0., 0.], valid]
         state, trace = self.infer()
-        self.assertTrue(state['reflection']['verified'])
-        self.assertEqual(state['reflection']['revisions'], 2)
-        self.assertEqual([r['action'] for r in trace['rounds']], ['select'] * 3)
+        self.assertFalse(state['reflection']['verified'])
+        self.assertEqual(state['reflection']['status'], 'not_checked_no_targets')
+        self.assertEqual(state['reflection']['revisions'], 1)
+        self.assertEqual([r['action'] for r in trace['rounds']], ['select'] * 2)
         self.assertEqual(trace['rounds'][1]['boxes'], [])
         self.assertEqual(trace['rounds'][1]['existence']['status'], 'failed')
-        self.assertEqual(trace['rounds'][1]['consistency']['status'], 'skipped')
+        self.assertEqual(trace['rounds'][1]['consistency']['status'], 'not_checked_no_targets')
         calls = [c for c in trace['calls'] if c['stage'] == 'grounding']
         self.assertEqual([c['status'] for c in calls],
-                         ['accepted', 'no_candidate', 'no_candidate', 'no_candidate', 'accepted'])
+                         ['accepted', 'no_candidate', 'no_candidate', 'no_candidate'])
         self.assertEqual(calls[1]['raw_box'], [0., 0., 0., 0.])
-        self.assertEqual(self.upstream.refine_grounding_with_vlm.call_count, 2)
+        self.assertEqual(self.upstream.refine_grounding_with_vlm.call_count, 1)
 
-    def test_empty_boxes_exhaust_shared_budget_without_becoming_verified(self):
+    def test_empty_boxes_exhaust_existence_without_becoming_verified(self):
         self.upstream.grounding_with_vlm.side_effect = [[0., 0., 0., 0.], None, [0., 0., 0., 0.]] * 5
         state, trace = self.infer()
-        self.assertEqual(state['reflection']['status'], 'budget_exhausted')
-        self.assertEqual(state['reflection']['revisions'], 4)
+        self.assertEqual(state['reflection']['status'], 'not_checked_no_targets')
+        self.assertEqual(state['reflection']['revisions'], 1)
         self.assertFalse(state['reflection']['verified'])
         self.assertEqual(state['boxes'], [])
-        self.assertEqual(len(trace['rounds']), 5)
-        self.assertEqual(self.upstream.grounding_with_vlm.call_count, 15)
+        self.assertEqual(len(trace['rounds']), 2)
+        self.assertEqual(self.upstream.grounding_with_vlm.call_count, 6)
         self.upstream.image_qa_with_vlm.assert_not_called()
         self.upstream.answer_qa_with_vlm.assert_not_called()
 

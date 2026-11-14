@@ -1,0 +1,12 @@
+{
+  "reference": "https://github.com/showlab/VideoLISA/tree/main/evaluation/reason_vos",
+  "reference_metrics_sha256": "a71bfb6d2da563ebf50251bda9876cf0b4b6193842543b0a3a286190529e26be",
+  "ast_equal": {
+    "db_eval_iou": true,
+    "db_eval_boundary": true,
+    "f_measure": true,
+    "_seg2bmap": true
+  },
+  "aggregation": "Per-expression mean over annotated frames, then equal mean over all 458 expressions; no rounding before summary",
+  "coverage": "Every required expression and annotation frame must be included"
+}

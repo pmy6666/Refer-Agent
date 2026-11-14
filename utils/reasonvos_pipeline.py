@@ -12,7 +12,7 @@ from utils.reasonvos_reflection import (
 
 
 def infer_expression(upstream, model, scorer, images, frames, image_directory,
-                     query, clip_scores, qa, max_reflections=4, retries=3, pid=0,
+                     query, clip_scores, qa, max_existence_checks=2, max_consistency_checks=2, retries=3, pid=0,
                      trace=None, candidate_indices=None, operators_only=False,
                      context_indices=None):
     trace = trace if trace is not None else {'calls': [], 'selection': [], 'rounds': []}
@@ -202,4 +202,4 @@ def infer_expression(upstream, model, scorer, images, frames, image_directory,
     if operators_only:
         return select, describe, ground, existence, consistency
     return run_reflection(select, describe, ground, existence, consistency,
-                          max_reflections, trace['rounds'])
+                          max_existence_checks, max_consistency_checks, trace['rounds'])

@@ -1,0 +1,205 @@
+{
+  "files": [
+    {
+      "model": "AIDC-AI/Ovis2.5-9B",
+      "name": ".gitattributes",
+      "algorithm": "git_blob_sha1",
+      "expected": "52373fe24473b1aa44333d318f578ae6bf04b49b",
+      "actual": "52373fe24473b1aa44333d318f578ae6bf04b49b",
+      "match": true
+    },
+    {
+      "model": "AIDC-AI/Ovis2.5-9B",
+      "name": "LICENSE",
+      "algorithm": "git_blob_sha1",
+      "expected": "522e362a614385ed1d4d5fb9763eca960784b6c4",
+      "actual": "522e362a614385ed1d4d5fb9763eca960784b6c4",
+      "match": true
+    },
+    {
+      "model": "AIDC-AI/Ovis2.5-9B",
+      "name": "NOTICE",
+      "algorithm": "git_blob_sha1",
+      "expected": "d7db7f83ae74d1da885293c137e223081ab0de72",
+      "actual": "d7db7f83ae74d1da885293c137e223081ab0de72",
+      "match": true
+    },
+    {
+      "model": "AIDC-AI/Ovis2.5-9B",
+      "name": "README.md",
+      "algorithm": "git_blob_sha1",
+      "expected": "800e1a396a300ee2bfdb993abe532c9873cd8f0b",
+      "actual": "800e1a396a300ee2bfdb993abe532c9873cd8f0b",
+      "match": true
+    },
+    {
+      "model": "AIDC-AI/Ovis2.5-9B",
+      "name": "added_tokens.json",
+      "algorithm": "git_blob_sha1",
+      "expected": "b54f9135e44c1e81047e8d05cb027af8bc039eed",
+      "actual": "b54f9135e44c1e81047e8d05cb027af8bc039eed",
+      "match": true
+    },
+    {
+      "model": "AIDC-AI/Ovis2.5-9B",
+      "name": "chat_template.json",
+      "algorithm": "git_blob_sha1",
+      "expected": "622708c37df0b4cec4bfb72bd282a45d6e990228",
+      "actual": "622708c37df0b4cec4bfb72bd282a45d6e990228",
+      "match": true
+    },
+    {
+      "model": "AIDC-AI/Ovis2.5-9B",
+      "name": "config.json",
+      "algorithm": "git_blob_sha1",
+      "expected": "098cd3f90374ba7e8a41352d64c56cc1e7ac48f3",
+      "actual": "098cd3f90374ba7e8a41352d64c56cc1e7ac48f3",
+      "match": true
+    },
+    {
+      "model": "AIDC-AI/Ovis2.5-9B",
+      "name": "configuration_ovis2_5.py",
+      "algorithm": "git_blob_sha1",
+      "expected": "0a90e12def7a1ae18e663bda3741eb197c44d2e0",
+      "actual": "0a90e12def7a1ae18e663bda3741eb197c44d2e0",
+      "match": true
+    },
+    {
+      "model": "AIDC-AI/Ovis2.5-9B",
+      "name": "generation_config.json",
+      "algorithm": "git_blob_sha1",
+      "expected": "d44b45bfc98fbdf410b07eda1b654fc9bce96b47",
+      "actual": "d44b45bfc98fbdf410b07eda1b654fc9bce96b47",
+      "match": true
+    },
+    {
+      "model": "AIDC-AI/Ovis2.5-9B",
+      "name": "merges.txt",
+      "algorithm": "git_blob_sha1",
+      "expected": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7",
+      "actual": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7",
+      "match": true
+    },
+    {
+      "model": "AIDC-AI/Ovis2.5-9B",
+      "name": "model.safetensors.index.json",
+      "algorithm": "git_blob_sha1",
+      "expected": "817674f62b0fffddf8003f3f9bb371e63cfb4e11",
+      "actual": "817674f62b0fffddf8003f3f9bb371e63cfb4e11",
+      "match": true
+    },
+    {
+      "model": "AIDC-AI/Ovis2.5-9B",
+      "name": "modeling_ovis2_5.py",
+      "algorithm": "git_blob_sha1",
+      "expected": "8984df165c84ccc3df06c3b5bb983f0f2e9e0d6a",
+      "actual": "8984df165c84ccc3df06c3b5bb983f0f2e9e0d6a",
+      "match": true
+    },
+    {
+      "model": "AIDC-AI/Ovis2.5-9B",
+      "name": "preprocessor_config.json",
+      "algorithm": "git_blob_sha1",
+      "expected": "64b9bf1b69656ce79e8c6b34fd066d37b4edb534",
+      "actual": "64b9bf1b69656ce79e8c6b34fd066d37b4edb534",
+      "match": true
+    },
+    {
+      "model": "AIDC-AI/Ovis2.5-9B",
+      "name": "special_tokens_map.json",
+      "algorithm": "git_blob_sha1",
+      "expected": "ac23c0aaa2434523c494330aeb79c58395378103",
+      "actual": "ac23c0aaa2434523c494330aeb79c58395378103",
+      "match": true
+    },
+    {
+      "model": "AIDC-AI/Ovis2.5-9B",
+      "name": "tokenizer_config.json",
+      "algorithm": "git_blob_sha1",
+      "expected": "dde2dcb5a0b35b5f5de513353663c368d0f07355",
+      "actual": "dde2dcb5a0b35b5f5de513353663c368d0f07355",
+      "match": true
+    },
+    {
+      "model": "AIDC-AI/Ovis2.5-9B",
+      "name": "vocab.json",
+      "algorithm": "git_blob_sha1",
+      "expected": "4783fe10ac3adce15ac8f358ef5462739852c569",
+      "actual": "4783fe10ac3adce15ac8f358ef5462739852c569",
+      "match": true
+    },
+    {
+      "model": "openai/clip-vit-base-patch32",
+      "revision": "3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268",
+      "name": "config.json",
+      "algorithm": "git_blob_sha1",
+      "expected": "a2a88b96561196777ca173b15309ea859f4d2ce0",
+      "actual": "a2a88b96561196777ca173b15309ea859f4d2ce0",
+      "match": true
+    },
+    {
+      "model": "openai/clip-vit-base-patch32",
+      "revision": "3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268",
+      "name": "merges.txt",
+      "algorithm": "git_blob_sha1",
+      "expected": "bbfec752c9a675946c6dce106def6f35c882dcc2",
+      "actual": "bbfec752c9a675946c6dce106def6f35c882dcc2",
+      "match": true
+    },
+    {
+      "model": "openai/clip-vit-base-patch32",
+      "revision": "3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268",
+      "name": "preprocessor_config.json",
+      "algorithm": "git_blob_sha1",
+      "expected": "5a12a1eb250987a4eee0e3e7d7338c4b22724be1",
+      "actual": "5a12a1eb250987a4eee0e3e7d7338c4b22724be1",
+      "match": true
+    },
+    {
+      "model": "openai/clip-vit-base-patch32",
+      "revision": "3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268",
+      "name": "pytorch_model.bin",
+      "algorithm": "sha256",
+      "expected": "a63082132ba4f97a80bea76823f544493bffa8082296d62d71581a4feff1576f",
+      "actual": "a63082132ba4f97a80bea76823f544493bffa8082296d62d71581a4feff1576f",
+      "match": true
+    },
+    {
+      "model": "openai/clip-vit-base-patch32",
+      "revision": "3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268",
+      "name": "special_tokens_map.json",
+      "algorithm": "git_blob_sha1",
+      "expected": "9bfb42aa97dcd61e89f279ccaee988bccb4fabae",
+      "actual": "9bfb42aa97dcd61e89f279ccaee988bccb4fabae",
+      "match": true
+    },
+    {
+      "model": "openai/clip-vit-base-patch32",
+      "revision": "3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268",
+      "name": "tokenizer.json",
+      "algorithm": "git_blob_sha1",
+      "expected": "564c0ebd5ce29c4ee4864004aee693deadd3128c",
+      "actual": "564c0ebd5ce29c4ee4864004aee693deadd3128c",
+      "match": true
+    },
+    {
+      "model": "openai/clip-vit-base-patch32",
+      "revision": "3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268",
+      "name": "tokenizer_config.json",
+      "algorithm": "git_blob_sha1",
+      "expected": "4fdaf6842dd5a725b940c92b6b692490ce59d548",
+      "actual": "4fdaf6842dd5a725b940c92b6b692490ce59d548",
+      "match": true
+    },
+    {
+      "model": "openai/clip-vit-base-patch32",
+      "revision": "3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268",
+      "name": "vocab.json",
+      "algorithm": "git_blob_sha1",
+      "expected": "182766ce89b439768edadda342519f33802f5364",
+      "actual": "182766ce89b439768edadda342519f33802f5364",
+      "match": true
+    }
+  ],
+  "mismatches": 0
+}

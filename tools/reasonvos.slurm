@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=refer-paper4
+#SBATCH --job-name=refer-e2-c2
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=48G
-#SBATCH --time=06:00:00
+#SBATCH --time=04:00:00
 #SBATCH --signal=B:USR1@120
 #SBATCH --output=/home/user1/NKU/Refer-Agent-reproduction/runs/slurm-%j.log
 set -euo pipefail
@@ -22,7 +22,8 @@ continue_after_time_limit() {
     if [[ -n "$runner_pid" ]] && kill -0 "$runner_pid" 2>/dev/null; then
         kill -TERM -- "-$runner_pid" 2>/dev/null || true
         wait "$runner_pid" 2>/dev/null || true
-        sbatch --parsable "$PWD/tools/reasonvos.slurm" "${run_arguments[@]}"
+        next_job=$(sbatch --parsable "$PWD/tools/reasonvos.slurm" "${run_arguments[@]}")
+        printf 'Time-limit continuation submitted: %s\n' "$next_job"
         exit 0
     fi
 }

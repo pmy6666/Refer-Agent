@@ -1,0 +1,19 @@
+{
+  "metadata_frames": 9516,
+  "videos_with_extra_rgb_frames": [
+    {
+      "video": "76_GOC-s5SM0YU",
+      "extra_rgb_frames": 7
+    },
+    {
+      "video": "248_3N9qCBRVviA",
+      "extra_rgb_frames": 2
+    },
+    {
+      "video": "353_-5sqmCF8OFU",
+      "extra_rgb_frames": 3
+    }
+  ],
+  "extra_total": 12,
+  "note": "Public CLIP code normalizes over all RGB files in a video folder; selection uses the run metadata frame list."
+}

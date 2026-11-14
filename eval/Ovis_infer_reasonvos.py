@@ -58,7 +58,7 @@ OVIS_CHECKPOINT = OVIS_PATH
 def main(args):
     print("Inference only supports for batch size = 1")
     print(args)
-    if args.max_query_num < 1 or args.max_reflections < 0:
+    if args.max_query_num < 1 or min(args.max_existence_checks, args.max_consistency_checks) < 0:
         raise ValueError('Invalid retry/reflection budget')
     ensure_identity(RUN_ROOT / 'inference_identity.json', inference_identity(args),
                     [RUN_ROOT / 'predictions/Annotations'])
@@ -1069,7 +1069,7 @@ def sub_processor(lock, pid, args, data, save_path_prefix, img_folder, video_lis
                     os.path.join(img_folder, video), expression['exp_text'],
                     all_CLIP_query_scores[video]['CLIP'][exp_id],
                     normalize_qa(all_query_qa[f'{video}/{exp_id}']['qa_complete']),
-                    args.max_reflections, args.max_query_num, pid, trace)
+                    args.max_existence_checks, args.max_consistency_checks, args.max_query_num, pid, trace)
                 stored = {'all_boxes': state['boxes'], 'all_points': state['points'],
                           'descriptions': state['descriptions'], 'frames': frames,
                           'key_frame_idx': state['layout']['key_frame_idx'],
@@ -1108,8 +1108,8 @@ if __name__ == '__main__':
     parser.add_argument("--visualize", action='store_true')
     parser.add_argument("--max_query_num", default=3, type=int)
     parser.add_argument('--seed', default=42, type=int)
-    parser.add_argument('--max_reflections', '--max_turn', default=4, type=int,
-                        help='Shared feedback revision budget after the initial prediction; 0 disables checks')
+    parser.add_argument('--max_existence_checks', default=2, type=int, choices=(0, 1, 2))
+    parser.add_argument('--max_consistency_checks', default=2, type=int, choices=(0, 1, 2))
     parser.add_argument('--num_gpus', '-ng', type=int, required=True,
                         help='number of CUDA gpus to run on. mutually exclusive with \'gpu_ids\'')
     args = parser.parse_args()

@@ -1,8 +1,7 @@
 """Model-independent reasoning/reflection control for the ReasonVOS baseline.
 
-MAX_TURN is interpreted as feedback-driven revisions after the initial prediction.
-Every revised state is checked again, including the final budgeted prediction.
-The paper does not publish executable pseudocode defining this counter.
+Existence and consistency have independent check budgets, including initial checks.
+The default 2+2 protocol is explicitly requested by the user.
 """
 import copy
 import json
@@ -117,19 +116,21 @@ def validate_scores(value, count):
 
 
 def run_reflection(select, describe, ground, existence, consistency,
-                   max_reflections=4, trace=None):
-    """One shared budget; a state is a layout + descriptions + matching boxes/points.
+                   max_existence_checks=2, max_consistency_checks=2, trace=None):
+    """Independent stage caps, including the initial check; no unchecked update.
 
-    Existence failure revisits selection; consistency failure revisits intent.
-    Both verifiers run on the new state. Valid format retries are separate from
-    reflection revisions. Exhaustion exports an explicitly failed final state.
+    Existence exhaustion cannot consume consistency opportunities. A later
+    description revision invalidates an earlier existence pass unless it can
+    be checked again with remaining existence budget.
     """
-    if isinstance(max_reflections, bool) or max_reflections < 0:
-        raise ValueError('Reflection budget must be nonnegative')
+    budgets = {'existence': max_existence_checks, 'consistency': max_consistency_checks}
+    if any(isinstance(v, bool) or not isinstance(v, int) or not 0 <= v <= 2 for v in budgets.values()):
+        raise ValueError('Each stage check budget must be an integer in [0, 2]')
+    used = {'existence': 0, 'consistency': 0}
     trace = trace if trace is not None else []
-    layout, previous, history, guidance = None, [], [], None
-    action = 'select'
-    for revision in range(max_reflections + 1):
+    layout, history, previous, guidance = None, [], [], None
+    action, revision = 'select', 0
+    while True:
         if action == 'select':
             layout = select(guidance, previous)
         descriptions = describe(layout, copy.deepcopy(history))
@@ -139,42 +140,61 @@ def run_reflection(select, describe, ground, existence, consistency,
         if len(boxes) != len(points):
             raise ValueError('Grounding box/point count mismatch')
         state = {'layout': layout, **localization}
-        if max_reflections == 0:
-            state['reflection'] = {'revisions': 0, 'max_reflections': 0,
-                                   'existence': 'not_checked_disabled',
-                                   'consistency': 'not_checked_disabled',
-                                   'verified': False, 'status': 'disabled'}
-            trace.append({'revision': 0, 'action': action, 'reflection': state['reflection']})
+        complete = bool(boxes) and len(boxes) == len(descriptions) == len(localization['descriptions'])
+        check1 = {'status': 'not_checked_disabled' if not budgets['existence']
+                  else 'not_rechecked_budget_exhausted'}
+        check2 = {'status': 'skipped'}
+        if used['existence'] < budgets['existence']:
+            used['existence'] += 1
+            check1 = (existence(state) if complete else
+                      {'status': 'failed', 'feedback': 'Not all described targets could be localized.'})
+            if check1['status'] not in ('passed', 'failed'):
+                raise ValueError('Unexpected existence verification status')
+        # Allow frame repair only if the repaired state can still be checked.
+        retry_selection = (check1['status'] == 'failed' and
+                           used['existence'] < budgets['existence'])
+        if not retry_selection:
+            if not budgets['consistency']:
+                check2 = {'status': 'not_checked_disabled'}
+            elif not boxes or len(localization['descriptions']) != len(boxes):
+                check2 = {'status': 'not_checked_no_targets'}
+            elif used['consistency'] < budgets['consistency']:
+                check2 = consistency(state)
+                if check2['status'] not in ('passed', 'failed', 'not_checked_empty_qa'):
+                    raise ValueError('Unexpected consistency verification status')
+                if check2['status'] in ('passed', 'failed'):
+                    used['consistency'] += 1
+        verified = check1['status'] == check2['status'] == 'passed'
+        retry_description = (not retry_selection and check2['status'] == 'failed'
+                             and used['consistency'] < budgets['consistency'])
+        terminal = not retry_selection and not retry_description
+        status = ('verified' if verified else 'in_progress')
+        if terminal and not verified:
+            if not any(budgets.values()):
+                status = 'disabled'
+            elif check2['status'] == 'not_checked_empty_qa':
+                status = 'not_checked_empty_qa'
+            elif check2['status'] == 'not_checked_no_targets':
+                status = 'not_checked_no_targets'
+            else:
+                status = 'budget_exhausted'
+        state['reflection'] = {
+            'revisions': revision, 'budgets': dict(budgets), 'checks_used': dict(used),
+            'existence': check1['status'], 'consistency': check2['status'],
+            'existence_checked_on_final_state': check1['status'] in ('passed', 'failed'),
+            'verified': verified, 'status': status,
+        }
+        trace.append({'revision': revision, 'action': action,
+                      'key_frame_idx': layout['key_frame_idx'],
+                      'descriptions': copy.deepcopy(localization['descriptions']),
+                      'boxes': copy.deepcopy(boxes), 'points': copy.deepcopy(points),
+                      'existence': copy.deepcopy(check1), 'consistency': copy.deepcopy(check2),
+                      'checks_used': dict(used), 'budgets': dict(budgets)})
+        if terminal:
             return state
-        if (not boxes or len(boxes) != len(descriptions)
-                or len(localization['descriptions']) != len(descriptions)):
-            check1 = {'status': 'failed', 'feedback': 'Not all described targets could be localized.'}
-        else:
-            check1 = existence(state)
-        check2 = consistency(state) if check1['status'] == 'passed' else {'status': 'skipped'}
-        if check1['status'] not in ('passed', 'failed') or check2['status'] not in (
-                'passed', 'failed', 'skipped', 'not_checked_empty_qa'):
-            raise ValueError('Unexpected verification status')
-        event = {'revision': revision, 'action': action,
-                 'key_frame_idx': layout['key_frame_idx'],
-                 'descriptions': copy.deepcopy(localization['descriptions']),
-                 'boxes': copy.deepcopy(boxes), 'points': copy.deepcopy(points),
-                 'existence': copy.deepcopy(check1), 'consistency': copy.deepcopy(check2)}
-        trace.append(event)
-        state['reflection'] = {'revisions': revision, 'max_reflections': max_reflections,
-                               'existence': check1['status'], 'consistency': check2['status'],
-                               'verified': check1['status'] == check2['status'] == 'passed'}
-        if state['reflection']['verified']:
-            state['reflection']['status'] = 'verified'
-            return state
-        if check1['status'] == 'passed' and check2['status'] == 'not_checked_empty_qa':
-            state['reflection']['status'] = 'not_checked_empty_qa'
-            return state
-        if revision == max_reflections:
-            state['reflection']['status'] = 'budget_exhausted'
-            return state
-        failed = check1 if check1['status'] == 'failed' else check2
+        failed = check1 if retry_selection else check2
         guidance = failed.get('feedback', '')
         previous = list(localization['descriptions'])
         history.append({'descriptions': previous, 'feedback': guidance})
-        action = 'select' if check1['status'] == 'failed' else 'describe'
+        action = 'select' if retry_selection else 'describe'
+        revision += 1

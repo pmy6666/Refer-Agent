@@ -1,0 +1,5 @@
+{
+  "fixed_revision_remote_metadata_matches_local_expected_manifest": true,
+  "mismatches": [],
+  "scope": "Ovis/SAM2 entries in the download manifest and all locally used CLIP manifest entries"
+}
