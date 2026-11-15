@@ -116,16 +116,18 @@ def validate_scores(value, count):
 
 
 def run_reflection(select, describe, ground, existence, consistency,
-                   max_existence_checks=2, max_consistency_checks=2, trace=None):
+                   max_existence_checks=3, max_consistency_checks=3, trace=None):
     """Independent stage caps, including the initial check; no unchecked update.
 
+    Defaults allow at most two frame reselections and two consistency-driven
+    description revisions (three checks per stage, including the initial one).
     Existence exhaustion cannot consume consistency opportunities. A later
     description revision invalidates an earlier existence pass unless it can
     be checked again with remaining existence budget.
     """
     budgets = {'existence': max_existence_checks, 'consistency': max_consistency_checks}
-    if any(isinstance(v, bool) or not isinstance(v, int) or not 0 <= v <= 2 for v in budgets.values()):
-        raise ValueError('Each stage check budget must be an integer in [0, 2]')
+    if any(isinstance(v, bool) or not isinstance(v, int) or not 0 <= v <= 3 for v in budgets.values()):
+        raise ValueError('Each stage check budget must be an integer in [0, 3]')
     used = {'existence': 0, 'consistency': 0}
     trace = trace if trace is not None else []
     layout, history, previous, guidance = None, [], [], None

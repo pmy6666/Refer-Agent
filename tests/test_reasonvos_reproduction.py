@@ -68,7 +68,7 @@ class ReflectionTests(unittest.TestCase):
         callbacks = self.callbacks([{'status': 'failed', 'feedback': 'occluded'}] * 2,
                                   [{'status': 'failed', 'feedback': 'wrong'}] * 2)
         trace = []
-        state = run_reflection(*callbacks, trace=trace)
+        state = run_reflection(*callbacks, max_existence_checks=2, max_consistency_checks=2, trace=trace)
         self.assertEqual(callbacks[3].call_count, 2)
         self.assertEqual(callbacks[4].call_count, 2)
         self.assertEqual(self.select.call_count, 2)
@@ -91,8 +91,34 @@ class ReflectionTests(unittest.TestCase):
         self.assertFalse(state['reflection']['verified'])
         self.assertEqual(state['reflection']['existence'], 'not_rechecked_budget_exhausted')
 
-    def test_stage_budgets_cannot_exceed_two(self):
-        for value in (3, -1, True):
+    def test_defaults_allow_two_reselections_and_two_description_revisions(self):
+        callbacks = self.callbacks([{'status': 'failed', 'feedback': 'occluded'}] * 3,
+                                  [{'status': 'failed', 'feedback': 'wrong target'}] * 3)
+        trace = []
+        state = run_reflection(*callbacks, trace=trace)
+        self.assertEqual([r['action'] for r in trace],
+                         ['select', 'select', 'select', 'describe', 'describe'])
+        self.assertEqual(self.select.call_count - 1, 2)
+        self.assertEqual(callbacks[3].call_count, 3)
+        self.assertEqual(callbacks[4].call_count, 3)
+        self.assertEqual(self.ground.call_count, 5)
+        self.assertEqual(state['reflection']['revisions'], 4)
+        self.assertEqual(state['reflection']['checks_used'], {'existence': 3, 'consistency': 3})
+        self.assertEqual(state['reflection']['status'], 'budget_exhausted')
+        self.assertFalse(state['reflection']['verified'])
+
+    def test_second_description_revision_is_checked_and_can_pass(self):
+        callbacks = self.callbacks([{'status': 'passed'}] * 3,
+                                  [{'status': 'failed'}] * 2 + [{'status': 'passed'}])
+        trace = []
+        state = run_reflection(*callbacks, trace=trace)
+        self.assertEqual([r['action'] for r in trace], ['select', 'describe', 'describe'])
+        self.assertTrue(state['reflection']['verified'])
+        self.assertEqual(self.select.call_count, 1)
+        self.assertEqual(state['reflection']['checks_used'], {'existence': 3, 'consistency': 3})
+
+    def test_stage_budgets_cannot_exceed_three(self):
+        for value in (4, -1, True):
             with self.assertRaises(ValueError):
                 run_reflection(*self.callbacks([], []), max_existence_checks=value)
             with self.assertRaises(ValueError):
@@ -238,7 +264,7 @@ class PipelineTests(unittest.TestCase):
         valid = [.1, .1, .8, .8]
         self.upstream.grounding_with_vlm.side_effect = [
             valid, [0., 0., 0., 0.], None, [0., 0., 0., 0.], valid]
-        state, trace = self.infer()
+        state, trace = self.infer(max_existence_checks=2, max_consistency_checks=2)
         self.assertFalse(state['reflection']['verified'])
         self.assertEqual(state['reflection']['status'], 'not_checked_no_targets')
         self.assertEqual(state['reflection']['revisions'], 1)
@@ -256,11 +282,11 @@ class PipelineTests(unittest.TestCase):
         self.upstream.grounding_with_vlm.side_effect = [[0., 0., 0., 0.], None, [0., 0., 0., 0.]] * 5
         state, trace = self.infer()
         self.assertEqual(state['reflection']['status'], 'not_checked_no_targets')
-        self.assertEqual(state['reflection']['revisions'], 1)
+        self.assertEqual(state['reflection']['revisions'], 2)
         self.assertFalse(state['reflection']['verified'])
         self.assertEqual(state['boxes'], [])
-        self.assertEqual(len(trace['rounds']), 2)
-        self.assertEqual(self.upstream.grounding_with_vlm.call_count, 6)
+        self.assertEqual(len(trace['rounds']), 3)
+        self.assertEqual(self.upstream.grounding_with_vlm.call_count, 9)
         self.upstream.image_qa_with_vlm.assert_not_called()
         self.upstream.answer_qa_with_vlm.assert_not_called()
 

@@ -160,8 +160,10 @@ def parse_args():
     parser.add_argument('--run_dir', type=Path, default=RUN_ROOT)
     parser.add_argument('--preprocessing-cache', type=Path,
                         help='Audited CLIP/QA inputs from a matching historical run; never imports predictions')
-    parser.add_argument('--max_existence_checks', type=int, default=2, choices=(0, 1, 2))
-    parser.add_argument('--max_consistency_checks', type=int, default=2, choices=(0, 1, 2))
+    parser.add_argument('--max_existence_checks', type=int, default=3, choices=(0, 1, 2, 3),
+                        help='existence checks including initial; 3 allows at most 2 frame reselections')
+    parser.add_argument('--max_consistency_checks', type=int, default=3, choices=(0, 1, 2, 3),
+                        help='consistency checks including initial; 3 allows at most 2 description revisions')
     parser.add_argument('--max_query_num', type=int, default=3)
     parser.add_argument('--num_gpus', '-ng', type=int, default=1)
     parser.add_argument('--seed', type=int, default=42)

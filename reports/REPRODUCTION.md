@@ -1,4 +1,5 @@
-当前协议已按用户要求改为存在性/一致性各最多2轮检查，见[E2_C2_PROTOCOL.md](E2_C2_PROTOCOL.md)。下文保留旧共享预算实验历史记录。
+当前默认允许最多两次重新选帧、两次一致性驱动的描述修正：每阶段3次检查（含初次），合计最多6次。见[RESELECT2_REVISE2_PROTOCOL.md](RESELECT2_REVISE2_PROTOCOL.md)。原2+2检查实验及下文历史记录保留。
+
 
 # ReasonVOS 独立复现记录
 

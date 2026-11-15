@@ -1108,8 +1108,10 @@ if __name__ == '__main__':
     parser.add_argument("--visualize", action='store_true')
     parser.add_argument("--max_query_num", default=3, type=int)
     parser.add_argument('--seed', default=42, type=int)
-    parser.add_argument('--max_existence_checks', default=2, type=int, choices=(0, 1, 2))
-    parser.add_argument('--max_consistency_checks', default=2, type=int, choices=(0, 1, 2))
+    parser.add_argument('--max_existence_checks', default=3, type=int, choices=(0, 1, 2, 3),
+                        help='existence checks including initial; 3 allows at most 2 frame reselections')
+    parser.add_argument('--max_consistency_checks', default=3, type=int, choices=(0, 1, 2, 3),
+                        help='consistency checks including initial; 3 allows at most 2 description revisions')
     parser.add_argument('--num_gpus', '-ng', type=int, required=True,
                         help='number of CUDA gpus to run on. mutually exclusive with \'gpu_ids\'')
     args = parser.parse_args()

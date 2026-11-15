@@ -7,7 +7,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = Path(os.environ.get('REASONVOS_ROOT', REPO_ROOT.parent / 'Data' / 'ReasonVOS'))
 META_PATH = Path(os.environ.get('REASONVOS_META', DATA_ROOT / 'meta_expressions.json'))
-RUN_ROOT = Path(os.environ.get('REASONVOS_RUN', REPO_ROOT / 'runs' / 'reasonvos_e2_c2_20261114'))
+RUN_ROOT = Path(os.environ.get('REASONVOS_RUN', REPO_ROOT / 'runs' / 'reasonvos_reselect2_revise2_20261115'))
 OVIS_PATH = str(REPO_ROOT / 'AIDC-AI' / 'Ovis2.5-9B')
 CLIP_PATH = str(REPO_ROOT / 'openai' / 'clip-vit-base-patch32')
 QA_PATH = RUN_ROOT / 'query_qa' / 'reasonvos_query_qa.json'
