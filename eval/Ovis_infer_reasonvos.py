@@ -1220,7 +1220,7 @@ def sub_processor(lock, pid, args, data, save_path_prefix, img_folder, video_lis
                             break
 
                         all_boxes.clear()
-                        all_descriptions.clear()
+                        # Keep prior descriptions for reflection-guided CLIP selection.
 
                         CLIP_query_scores = all_CLIP_query_scores[video]['CLIP'][exp_id]
                         CLIP_scores = {}
@@ -1258,7 +1258,7 @@ def sub_processor(lock, pid, args, data, save_path_prefix, img_folder, video_lis
 
                         scored_items = []
                         for idx, selected_frame in enumerate(selected_frames):
-                            cur_score = 0.0 * CLIP_scores[selected_frame]['weighted_score'] + 0.7 * Ovis_scores[idx]
+                            cur_score = 0.3 * CLIP_scores[selected_frame]['clip'] + 0.7 * Ovis_scores[idx]
                             scored_items.append({
                                 'original_idx': idx,
                                 'score': cur_score
@@ -1469,7 +1469,7 @@ def sub_processor(lock, pid, args, data, save_path_prefix, img_folder, video_lis
                                     else:
                                         addition_info = ''
 
-                            query_qa_static = all_query_qa[video_exp].get('static', [])
+                            query_qa_static = all_query_qa[video_exp]['qa_complete']
                             questions_static = convert_qa_for_answer_prompt(query_qa_static)
 
                             # query QA(Input: img_with_box, QA) (Output: answer, reason)
@@ -1556,8 +1556,8 @@ if __name__ == '__main__':
                         help='valid or valid_u')
     parser.add_argument("--visualize", action='store_true')
     parser.add_argument("--max_query_num", default=3, type=int)
-    parser.add_argument("--max_update_descriptions_num", "-max_desc", default=2, type=int)
-    parser.add_argument("--max_update_frame_num", "-max_frame", default=2, type=int)
+    parser.add_argument("--max_update_descriptions_num", "-max_desc", default=3, type=int)
+    parser.add_argument("--max_update_frame_num", "-max_frame", default=3, type=int)
     parser.add_argument('--num_gpus', '-ng', type=int, required=True,
                         help='number of CUDA gpus to run on. mutually exclusive with \'gpu_ids\'')
     args = parser.parse_args()

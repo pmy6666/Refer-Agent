@@ -212,6 +212,43 @@ def stitch_images(ori_image_list, key_frame_index, img_size=None):
     return canvas
 
 
+def simple_concat_frames(ori_image_list, key_frame_index=0, img_size=None):
+    if not ori_image_list:
+        return None
+
+    image_list = []
+    for ori_image in ori_image_list:
+        image = ori_image.copy()
+        if img_size:
+            image.thumbnail(img_size, Image.Resampling.LANCZOS)
+        image_list.append(image)
+
+    w, h = image_list[0].size
+
+    labeled_images = []
+    for i, img in enumerate(image_list):
+        is_key = False
+        labeled_img = add_simple_number_label(img.copy(), i + 1, is_key)
+        labeled_images.append(labeled_img)
+
+    if h <= w:
+        total_width = w * len(labeled_images)
+        total_height = h
+        canvas = Image.new('RGB', (total_width, total_height), (240, 240, 240))
+
+        for i, img in enumerate(labeled_images):
+            canvas.paste(img, (i * w, 0))
+    else:
+        total_width = w
+        total_height = h * len(labeled_images)
+        canvas = Image.new('RGB', (total_width, total_height), (240, 240, 240))
+
+        for i, img in enumerate(labeled_images):
+            canvas.paste(img, (0, i * h))
+
+    return canvas
+
+
 def add_simple_number_label(image, number, is_key_frame=False):
     img = image.copy()
     draw = ImageDraw.Draw(img)
